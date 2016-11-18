@@ -1,4 +1,4 @@
-package config
+package main_test
 
 import (
 	. "github.com/onsi/ginkgo"
@@ -9,5 +9,5 @@ import (
 
 func TestMatcher(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "config Suite")
+	RunSpecs(t, "main Suite")
 }

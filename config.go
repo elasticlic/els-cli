@@ -1,4 +1,4 @@
-package config
+package main
 
 import (
 	"errors"
@@ -15,25 +15,9 @@ var (
 
 // Profile represents a named set of defaults.
 type Profile struct {
-
 	// AccessKey is used to sign API calls. An Access Key can be generated using
 	// the CLI  (TODO - describe process).
 	AccessKey els.AccessKey
-
-	// CustomerID defines the default ELS Customer ID to use in Customer API
-	// calls. This ID is not used in Vendor API calls relating to a specific
-	// vendor customer.
-	CustomerID string
-
-	// VendorID defines the default ELS Vendor ID to use in vendor API calls.
-	// This ID is not used in ELS Management API calls relating to a specific
-	// vendor.
-	VendorID string
-
-	// CloudProviderID defines the default ELS Cloud Provider ID to use in cloud
-	// provider API calls. This ID is not used in ELS Management API calls or
-	// Vendor API calls relating to a specific Cloud Provider.
-	CloudProviderID string
 }
 
 // Config represents a parsed configuration which provides defaults for commands

@@ -1,10 +1,11 @@
-package config
+package main_test
 
 import (
 	"io"
 	"strings"
 
 	"github.com/elasticlic/els-api-sdk-go/els"
+	cli "github.com/elasticlic/els-cli"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -12,21 +13,20 @@ import (
 var _ = Describe("Config Test Suite", func() {
 
 	var (
-		err    error
-		custID = "aCustomerId"
+		err error
 	)
 
 	Describe("Config", func() {
 		var (
-			sut       *Config
-			p         Profile
+			sut       *cli.Config
+			p         cli.Profile
 			profileID = "aProfile"
 		)
 		BeforeEach(func() {
-			sut = &Config{
-				Profiles: make(map[string]Profile),
+			sut = &cli.Config{
+				Profiles: make(map[string]cli.Profile),
 			}
-			sut.Profiles[profileID] = Profile{CustomerID: custID}
+			sut.Profiles[profileID] = cli.Profile{AccessKey: els.AccessKey{ID: "123"}}
 		})
 
 		Describe("Profile", func() {
@@ -36,7 +36,7 @@ var _ = Describe("Config Test Suite", func() {
 			Context("An existing profile is requested", func() {
 				It("returns the profile", func() {
 					Expect(err).To(BeNil())
-					Expect(p.CustomerID).To(Equal(custID))
+					Expect(p.AccessKey.ID).To(BeEquivalentTo("123"))
 				})
 			})
 			Context("A non-existing profile is requested", func() {
@@ -44,7 +44,7 @@ var _ = Describe("Config Test Suite", func() {
 					profileID = "unknownProfile"
 				})
 				It("returns ErrProfileNotFound", func() {
-					Expect(err).To(Equal(ErrProfileNotFound))
+					Expect(err).To(Equal(cli.ErrProfileNotFound))
 				})
 			})
 		})
@@ -52,12 +52,12 @@ var _ = Describe("Config Test Suite", func() {
 		Describe("ReadTOML", func() {
 			var (
 				r    io.Reader
-				c    *Config
+				c    *cli.Config
 				toml string
 			)
 			JustBeforeEach(func() {
 				r = strings.NewReader(toml)
-				c, err = ReadTOML(r)
+				c, err = cli.ReadTOML(r)
 			})
 			Context("Invalid TOML is passed", func() {
 				BeforeEach(func() {
@@ -71,18 +71,12 @@ var _ = Describe("Config Test Suite", func() {
 				BeforeEach(func() {
 					toml = `
                         [profiles.default]
-                            customerID = "customerA"
-                            vendorID = "vendorA"
-                            cloudProviderID = "cloudProviderA"
                             [profiles.default.accessKey]
                                 id = "elsID1"
                                 secretAccessKey = "secretAccessKey1"
                                 email = "email1@example.com"
 
                         [profiles.another]
-                            customerID = "customerB"
-                            vendorID = "vendorB"
-                            cloudProviderID = "cloudProviderB"
                             [profiles.another.accessKey]
                                 id = "elsID2"
                                 secretAccessKey = "secretAccessKey2"
@@ -93,27 +87,21 @@ var _ = Describe("Config Test Suite", func() {
 					Expect(err).To(BeNil())
 					p, err = c.Profile("default")
 					Expect(err).To(BeNil())
-					Expect(p).To(BeEquivalentTo(Profile{
+					Expect(p).To(BeEquivalentTo(cli.Profile{
 						AccessKey: els.AccessKey{
 							ID:              "elsID1",
 							SecretAccessKey: "secretAccessKey1",
 							Email:           "email1@example.com",
 						},
-						CustomerID:      "customerA",
-						VendorID:        "vendorA",
-						CloudProviderID: "cloudProviderA",
 					}))
 					p, err = c.Profile("another")
 					Expect(err).To(BeNil())
-					Expect(p).To(BeEquivalentTo(Profile{
+					Expect(p).To(BeEquivalentTo(cli.Profile{
 						AccessKey: els.AccessKey{
 							ID:              "elsID2",
 							SecretAccessKey: "secretAccessKey2",
 							Email:           "email2@example.com",
 						},
-						CustomerID:      "customerB",
-						VendorID:        "vendorB",
-						CloudProviderID: "cloudProviderB",
 					}))
 				})
 			})
