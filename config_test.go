@@ -2,7 +2,9 @@ package main_test
 
 import (
 	"io"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/elasticlic/els-api-sdk-go/els"
 	cli "github.com/elasticlic/els-cli"
@@ -16,10 +18,52 @@ var _ = Describe("Config Test Suite", func() {
 		err error
 	)
 
+	Describe("Profile", func() {
+		var (
+			sut *cli.Profile
+			k   els.AccessKey
+			req *http.Request
+			now = time.Now()
+		)
+		BeforeEach(func() {
+			sut = cli.NewProfile()
+		})
+
+		Describe("NewProfile", func() {
+			It("Creates the expected default struct", func() {
+				Expect(sut).To(BeEquivalentTo(cli.Profile{
+					MaxAPITries: 2,
+					Output:      cli.OutputWhole,
+				}))
+			})
+		})
+		Describe("Sign", func() {
+			BeforeEach(func() {
+				req, err = http.NewRequest("POST", "http:/a/url", nil)
+				Expect(err).To(BeNil())
+			})
+			JustBeforeEach(func() {
+				err = sut.Sign(req, now)
+			})
+			Context("The key is not set", func() {
+				It("returns ErrNoAccessKey", func() {
+					Expect(err).To(Equal(els.ErrNoAccessKey))
+				})
+			})
+			Context("The key is set", func() {
+				It("adds expected headers", func() {
+					Expect(req.Header.Get("Authorization")).NotTo(BeZero())
+					Expect(req.Header.Get("X-Els-Date")).NotTo(BeZero())
+					Expect(req.Header.Get("Content-Type")).To(Equal(els.RequiredContentType))
+				})
+			})
+		})
+	})
+
 	Describe("Config", func() {
 		var (
 			sut       *cli.Config
-			p         cli.Profile
+			p         *cli.Profile
 			profileID = "aProfile"
 		)
 		BeforeEach(func() {

@@ -9,6 +9,7 @@ import (
 	"github.com/elasticlic/els-api-sdk-go/els"
 	"github.com/elasticlic/go-utils/datetime"
 	"github.com/jawher/mow.cli"
+	"github.com/spf13/afero"
 )
 
 // configFile identifies the expected path to the user's config file.
@@ -54,7 +55,10 @@ func main() {
 	ca := cli.App("els-cli", "Make API calls to Elastic Licensing")
 	tp := datetime.NewNowTimeProvider()
 	a := els.NewEDAPICaller(nil, tp, time.Second*5, "")
+	fs := afero.NewOsFs()
+	p := NewCLIPipe()
+
 	// Inject and Run:
-	ELSCLI := NewELSCLI(ca, c, cFile, a)
+	ELSCLI := NewELSCLI(ca, c, cFile, tp, a, fs, p, os.Stdout, os.Stderr)
 	ELSCLI.Run(os.Args)
 }

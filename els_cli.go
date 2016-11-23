@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -13,7 +14,9 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/elasticlic/els-api-sdk-go/els"
+	"github.com/elasticlic/go-utils/datetime"
 	"github.com/jawher/mow.cli"
+	"github.com/spf13/afero"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -23,9 +26,45 @@ import (
 // store a context within the cli.Cmd.
 var gApp *ELSCLI
 
-var (
-	ErrNoContent = errors.New("No Content Provided - either provide a filename or pipe content to the command")
+const (
+	// APIRetryInterval governs the initial throttling of an API retry
+	APIRetryInterval = time.Millisecond * 500
 )
+
+var (
+	ErrNoContent      = errors.New("No Content Provided - either provide a filename or pipe content to the command")
+	ErrApiUnreachable = errors.New("The ELS API could not be reached. Are you connected to the internet?")
+)
+
+// Pipe is the interface which defines methods operating on data piped to
+// the command via the command-line.
+type Pipe interface {
+	Reader() (io.ReadCloser, error)
+}
+
+// CLIPipe is used to read data piped to the els-cli from the commmand-line.
+type CLIPipe struct{}
+
+func NewCLIPipe() *CLIPipe {
+	return &CLIPipe{}
+}
+
+// Reader implements interface Pipe and returns a Reader which can be used to
+// read the data passed to the els-cli via a command-line pipe.
+func (p *CLIPipe) Reader() (io.ReadCloser, error) {
+	info, err := os.Stdin.Stat()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if (info.Mode()&os.ModeCharDevice) != 0 || info.Size() == 0 {
+		// no data from a pipe - ignore
+		return nil, ErrNoContent
+	}
+
+	return os.Stdin, nil
+}
 
 // ELSCLI represents our App.
 type ELSCLI struct {
@@ -47,85 +86,171 @@ type ELSCLI struct {
 	// API call. Optionally they can be prefilled by a profile from the config
 	// file, selected via --profile. Additionally, individual properties can
 	// be set on with flags the commandline or via environment variables.
-	profile Profile
+	profile *Profile
+
+	// fs is an abstraction of the filesystem which makes it easier to test.
+	fs afero.Fs
+
+	// pipe allows access to data piped from the command-line to the app.
+	pipe Pipe
+
+	// outputStream is the stream to which results are written.
+	outputStream io.Writer
+
+	// errorStream is the stream to which errors are written.
+	errorStream io.Writer
+
+	// tp provides time for the app.
+	tp datetime.TimeProvider
 }
 
 // NewELSCLI creates a new instance of the ELS CLI App. Call Run() to execute
 // the App.
-func NewELSCLI(cliApp *cli.Cli, c *Config, cFile string, a els.APICaller) *ELSCLI {
+func NewELSCLI(
+	cliApp *cli.Cli,
+	c *Config,
+	cFile string,
+	tp datetime.TimeProvider,
+	fs afero.Fs,
+	a els.APICaller,
+	p Pipe,
+	o io.Writer,
+	e io.Writer) *ELSCLI {
 	return &ELSCLI{
-		fApp:       cliApp,
-		config:     c,
-		configFile: cFile,
-		apiCaller:  a,
+		fApp:         cliApp,
+		config:       c,
+		configFile:   cFile,
+		tp:           tp,
+		apiCaller:    a,
+		fs:           fs,
+		pipe:         p,
+		outputStream: o,
+		errorStream:  e,
 	}
 }
 
 // fatalError terminates the cli cleanly in the event of a usage error which
 // cannot be automatically captured by the cli framework.
 func (e *ELSCLI) fatalError(err error) {
-	log.WithFields(log.Fields{"Time": time.Now(), "Error": err}).Debug("Fatal Error")
+	log.WithFields(log.Fields{"Time": e.tp.Now(), "Error": err}).Debug("Fatal Error")
 	cli.Exit(-1)
 }
 
-// If data was piped into the app, it returns the bytes, otherwise nil.
-func (e *ELSCLI) readCLIPipeData() (bytes []byte) {
-	info, _ := os.Stdin.Stat()
-	if info.Size() > 0 {
-		bytes, _ := ioutil.ReadAll(os.Stdin)
+// tryRequest makes a single attempt to do an API call
+func (e *ELSCLI) tryRequest(req *http.Request) (rep *http.Response, err error) {
+	if rep, err = e.apiCaller.Do(nil, req, e.profile, true); err != nil {
+		log.WithFields(log.Fields{"Time": e.tp.Now(), "method": req.Method, "url": req.URL, "err": err}).Debug("Could not access API")
+		return nil, ErrApiUnreachable
 	}
+
+	log.WithFields(log.Fields{"Time": e.tp.Now(), "method": req.Method, "url": req.URL, "statusCode": rep.StatusCode}).Debug("API Call throttled by ELS")
+	return rep, nil
+}
+
+// doRequest attempts the given request, retrying if necessary.
+func (e *ELSCLI) doRequest(req *http.Request) (rep *http.Response, err error) {
+	for t := 0; t < e.profile.MaxAPITries; t++ {
+		rep, err = e.tryRequest(req)
+
+		if (err == nil) && (rep.StatusCode != http.StatusTooManyRequests) {
+			break
+		}
+	}
+
 	return
 }
 
-// jsonError reports the first error (if any) of the supposed JSON passed.
-func (e *ELSCLI) jsonError(j []byte) bool {
-	var js map[string]interface{}
-	return json.Unmarshal(j, &js)
+// getJSON returns a ReadCloser which will supply the JSON for the API
+// call - either from srcFile or, if not defined, from data piped into the
+// command.
+func (e *ELSCLI) getInputData(srcFile string) (io.ReadCloser, error) {
+
+	if srcFile == "" {
+		return e.pipe.Reader()
+	}
+
+	return e.fs.Open(srcFile)
 }
 
-// putRequest initialises an HTTP request whose body will be set to the contents
-// of the given file. If no file is given, it checks if data was piped to the
-// command, and if so, uses that instead. If the body cannot be identified, then
-// a fatal error is generated.
-func (e *ELSCLI) putRequest(url string, srcFile string) http.Request {
-
-	b, err := ioutil.ReadFile(srcFile)
-
-	if err != nil {
-		b := e, readCLIPipeData()
-	}
-
-	if b == nil {
-		e.fatalError(ErrNoContent)
-	}
-
-	// Validate input - must be JSON.
-	jErr := e.jsonError(b)
-	if jErr != nil {
-		e.fatalError(jErr)
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
-	if err != nil {
-		log.WithFields(log.Fields{"Time": time.Now(), "url": url, "json": string(jsonB)}).Debug("putRequest")
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json;charset=utf-8")
+// get makes a GET call to the given URL, where URL is relative to the API root
+// e.g. "/vendors".
+func (e *ELSCLI) get(URL string) error {
+	return e.makeCall("GET", URL, "")
 }
 
+// makeCall executes an API call whose body will be set to the contents of the
+// given file, or, if no file is given, data piped to the command. The URL is
+// relative to the API root - e.g. "/vendors".
+func (e *ELSCLI) makeCall(httpMethod string, URL string, srcFile string) (err error) {
+
+	var (
+		bodyRC io.ReadCloser
+		rep    *http.Response
+	)
+
+	if (httpMethod == "POST") || (httpMethod == "PUT") {
+		if bodyRC, err = e.getInputData(srcFile); err != nil {
+			return err
+		}
+	}
+
+	req, err := http.NewRequest(httpMethod, URL, bodyRC)
+	if err != nil {
+		log.WithFields(log.Fields{"Time": e.tp.Now(), "url": URL, "error": err}).Debug("putRequest")
+		return err
+	}
+
+	if rep, err = e.doRequest(req); err != nil {
+		return err
+	}
+
+	return e.writeResponse(rep)
+}
+
+// writeResponse outputs the requested components of the received response.
+func (e *ELSCLI) writeResponse(rep *http.Response) error {
+
+	if rep.Body != nil {
+		defer rep.Body.Close()
+	}
+
+	getBody := (e.profile.Output != OutputStatusCodeOnly) && (rep.Body != nil) && rep.ContentLength > 0
+
+	var prettyJSON bytes.Buffer
+
+	if getBody {
+		JSON, err := ioutil.ReadAll(rep.Body)
+		if err != nil {
+			return err
+		}
+		if err := json.Indent(&prettyJSON, JSON, "", "\t"); err != nil {
+			return err
+		}
+	}
+
+	if e.profile.Output != OutputBodyOnly {
+		fmt.Fprintln(e.outputStream, rep.StatusCode)
+	}
+
+	if (e.profile.Output != OutputStatusCodeOnly) && (prettyJSON.Len() > 0) {
+		fmt.Fprintln(e.outputStream, prettyJSON)
+	}
+
+	return nil
+}
+
+// putVendor updates or creates a vendor.
 func (e *ELSCLI) putVendor(vendorId string, inputFilename string) {
-	r := e.putRequest("/vendors/"+vendorId, inputFilename)
-}
-
-func (e *ELSCLI) getVendor(vendorId string, outputFilename string) {
-
-	iowriter
-
-	if err != nil {
+	if err := e.makeCall("PUT", "/vendors/"+vendorId, inputFilename); err != nil {
 		e.fatalError(err)
 	}
+}
 
-	e.apiCaller.Do(nil)
+// getVendor retrieves the details of the given vendor.
+func (e *ELSCLI) getVendor(vendorId string) {
+	if err := e.get("/vendors/" + vendorId); err != nil {
+		e.fatalError(err)
+	}
 }
 
 // vendorCommands defines the vendor subcommands.
@@ -169,11 +294,11 @@ func (e *ELSCLI) initProfile(p string) (err error) {
 
 // initLog configures logrus to create rotating logs within the user's .els
 // directory.
-func (e *ELSCLI) initLog() {
+func (e *ELSCLI) initLog() error {
 
 	u, err := user.Current()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	log.SetOutput(&lumberjack.Logger{
@@ -183,6 +308,8 @@ func (e *ELSCLI) initLog() {
 		MaxAge:     28, //days
 	})
 	log.SetLevel(log.DebugLevel)
+
+	return nil
 }
 
 // init sets up the app prior to parsing the commandline.
