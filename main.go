@@ -20,7 +20,7 @@ func configFile() (string, error) {
 		return "", err
 	}
 
-	return u.HomeDir + "/.els/els-cli.config", nil
+	return u.HomeDir + "/.els/els-cli.toml", nil
 }
 
 // readConfig attempts to identify and read the current user's els-cli.config
@@ -59,6 +59,6 @@ func main() {
 	p := NewCLIPipe()
 
 	// Inject and Run:
-	ELSCLI := NewELSCLI(ca, c, cFile, tp, a, fs, p, os.Stdout, os.Stderr)
+	ELSCLI := NewELSCLI(ca, c, cFile, tp, fs, a, p, os.Stdout, os.Stderr)
 	ELSCLI.Run(os.Args)
 }

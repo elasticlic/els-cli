@@ -21,7 +21,6 @@ var _ = Describe("Config Test Suite", func() {
 	Describe("Profile", func() {
 		var (
 			sut *cli.Profile
-			k   els.AccessKey
 			req *http.Request
 			now = time.Now()
 		)
@@ -31,7 +30,7 @@ var _ = Describe("Config Test Suite", func() {
 
 		Describe("NewProfile", func() {
 			It("Creates the expected default struct", func() {
-				Expect(sut).To(BeEquivalentTo(cli.Profile{
+				Expect(*sut).To(BeEquivalentTo(cli.Profile{
 					MaxAPITries: 2,
 					Output:      cli.OutputWhole,
 				}))
@@ -39,19 +38,28 @@ var _ = Describe("Config Test Suite", func() {
 		})
 		Describe("Sign", func() {
 			BeforeEach(func() {
-				req, err = http.NewRequest("POST", "http:/a/url", nil)
+				req, err = http.NewRequest("POST", "/1.0/url", nil)
 				Expect(err).To(BeNil())
 			})
 			JustBeforeEach(func() {
 				err = sut.Sign(req, now)
 			})
-			Context("The key is not set", func() {
-				It("returns ErrNoAccessKey", func() {
-					Expect(err).To(Equal(els.ErrNoAccessKey))
+			Context("The key is not configured", func() {
+				It("returns ErrInvalidAccessKey", func() {
+					Expect(err).To(Equal(els.ErrInvalidAccessKey))
 				})
 			})
-			Context("The key is set", func() {
+			Context("The key can be used", func() {
+				BeforeEach(func() {
+					sut.AccessKey = els.AccessKey{
+						ID:              "anID",
+						SecretAccessKey: "aSAC",
+						Email:           "email@example.com",
+						ExpiryDate:      now.Add(time.Hour),
+					}
+				})
 				It("adds expected headers", func() {
+					Expect(err).To(BeNil())
 					Expect(req.Header.Get("Authorization")).NotTo(BeZero())
 					Expect(req.Header.Get("X-Els-Date")).NotTo(BeZero())
 					Expect(req.Header.Get("Content-Type")).To(Equal(els.RequiredContentType))
@@ -68,9 +76,9 @@ var _ = Describe("Config Test Suite", func() {
 		)
 		BeforeEach(func() {
 			sut = &cli.Config{
-				Profiles: make(map[string]cli.Profile),
+				Profiles: make(map[string]*cli.Profile),
 			}
-			sut.Profiles[profileID] = cli.Profile{AccessKey: els.AccessKey{ID: "123"}}
+			sut.Profiles[profileID] = &cli.Profile{AccessKey: els.AccessKey{ID: "123"}}
 		})
 
 		Describe("Profile", func() {
@@ -131,7 +139,7 @@ var _ = Describe("Config Test Suite", func() {
 					Expect(err).To(BeNil())
 					p, err = c.Profile("default")
 					Expect(err).To(BeNil())
-					Expect(p).To(BeEquivalentTo(cli.Profile{
+					Expect(*p).To(BeEquivalentTo(cli.Profile{
 						AccessKey: els.AccessKey{
 							ID:              "elsID1",
 							SecretAccessKey: "secretAccessKey1",
@@ -140,7 +148,7 @@ var _ = Describe("Config Test Suite", func() {
 					}))
 					p, err = c.Profile("another")
 					Expect(err).To(BeNil())
-					Expect(p).To(BeEquivalentTo(cli.Profile{
+					Expect(*p).To(BeEquivalentTo(cli.Profile{
 						AccessKey: els.AccessKey{
 							ID:              "elsID2",
 							SecretAccessKey: "secretAccessKey2",

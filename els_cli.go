@@ -340,6 +340,8 @@ func (e *ELSCLI) init() {
 // Run parses the command line arguments and tries to identify and execute a
 // command.
 func (e *ELSCLI) Run(cliArgs []string) {
+
+	fmt.Printf("args: %+v", cliArgs)
 	e.init()
 	e.fApp.Run(cliArgs)
 }

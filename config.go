@@ -59,7 +59,7 @@ func NewProfile() *Profile {
 type Config struct {
 	// Profiles stores all the profiles read from the TOML file, indexed by
 	// profile ID.
-	Profiles map[string]Profile
+	Profiles map[string]*Profile
 }
 
 // Profile returns the profile matching the given ID, or an empty profile if
@@ -67,7 +67,7 @@ type Config struct {
 func (c *Config) Profile(profileID string) (*Profile, error) {
 
 	if p, ok := c.Profiles[profileID]; ok {
-		return &p, nil
+		return p, nil
 	}
 	return NewProfile(), ErrProfileNotFound
 }
