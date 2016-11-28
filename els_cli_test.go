@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"strings"
 	"time"
 
 	"github.com/elasticlic/els-api-sdk-go/els"
@@ -41,6 +42,8 @@ var _ = Describe("els_cliTest Suite", func() {
 		tp          = datetime.NewNowTimeProvider()
 		pipe        = &MockPipe{}
 		fs          = afero.NewMemMapFs()
+		pw          = "password"
+		inS         = strings.NewReader(pw)
 		outS        bytes.Buffer
 		errS        bytes.Buffer
 		ID          = els.AccessKeyID("anID")
@@ -70,14 +73,36 @@ var _ = Describe("els_cliTest Suite", func() {
 			}
 			prof = config.Profiles["default"]
 
-			sut = cli.NewELSCLI(fr, &config, cFile, tp, fs, ac, pipe, &outS, &errS)
+			sut = cli.NewELSCLI(fr, &config, cFile, tp, fs, ac, pipe, inS, &outS, &errS)
 		})
 
 		JustBeforeEach(func() {
 			sut.Run(args)
 		})
 
-		Describe("vendor", func() {
+		Describe("General Response Processing", func() {
+			// These tests are the only place we'll test the pipe input and
+			// the different output types
+			BeforeEach(func() {
+				args = append(args, "vendor", vendorId, "put")
+			})
+			Context("JSON is piped to the command-line", func() {
+				BeforeEach(func() {
+					pipe.Data = validJ
+
+					ac.AddExpectedCall("Do", em.APICall{
+						ACRep: em.ACRep{Rep: em.HTTPResponse(200, validJ)},
+					})
+
+				})
+				It("Receives a result from the API", func() {
+					Expect(errS.String()).To(BeZero())
+					Expect(outS.String()).To(MatchJSON(validJ))
+				})
+			})
+		})
+
+		XDescribe("vendor", func() {
 			BeforeEach(func() {
 				args = append(args, "vendor", vendorId)
 			})

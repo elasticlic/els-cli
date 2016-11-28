@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"strconv"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -94,6 +97,10 @@ type ELSCLI struct {
 	// pipe allows access to data piped from the command-line to the app.
 	pipe Pipe
 
+	// inputStream io.Reader is the stream which is used to enter passwords
+	// when requesting a new key.
+	inputStream io.Reader
+
 	// outputStream is the stream to which results are written.
 	outputStream io.Writer
 
@@ -114,6 +121,7 @@ func NewELSCLI(
 	fs afero.Fs,
 	a els.APICaller,
 	p Pipe,
+	i io.Reader,
 	o io.Writer,
 	e io.Writer) *ELSCLI {
 	return &ELSCLI{
@@ -124,6 +132,7 @@ func NewELSCLI(
 		apiCaller:    a,
 		fs:           fs,
 		pipe:         p,
+		inputStream:  i,
 		outputStream: o,
 		errorStream:  e,
 	}
@@ -143,7 +152,6 @@ func (e *ELSCLI) tryRequest(req *http.Request) (rep *http.Response, err error) {
 		return nil, ErrApiUnreachable
 	}
 
-	log.WithFields(log.Fields{"Time": e.tp.Now(), "method": req.Method, "url": req.URL, "statusCode": rep.StatusCode}).Debug("API Call throttled by ELS")
 	return rep, nil
 }
 
@@ -219,11 +227,11 @@ func (e *ELSCLI) writeResponse(rep *http.Response) error {
 	var prettyJSON bytes.Buffer
 
 	if getBody {
-		JSON, err := ioutil.ReadAll(rep.Body)
+		data, err := ioutil.ReadAll(rep.Body)
 		if err != nil {
 			return err
 		}
-		if err := json.Indent(&prettyJSON, JSON, "", "\t"); err != nil {
+		if err := json.Indent(&prettyJSON, data, "", "\t"); err != nil {
 			return err
 		}
 	}
@@ -233,7 +241,7 @@ func (e *ELSCLI) writeResponse(rep *http.Response) error {
 	}
 
 	if (e.profile.Output != OutputStatusCodeOnly) && (prettyJSON.Len() > 0) {
-		fmt.Fprintln(e.outputStream, prettyJSON)
+		fmt.Fprintln(e.outputStream, prettyJSON.String())
 	}
 
 	return nil
@@ -251,6 +259,67 @@ func (e *ELSCLI) getVendor(vendorId string) {
 	if err := e.get("/vendors/" + vendorId); err != nil {
 		e.fatalError(err)
 	}
+}
+
+//createAccessKey asks for a password then makes a request to retrieve a new
+// AccessKey for the user.
+func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
+	fmt.Fprintln(e.outputStream, "Enter password: ")
+
+	r := bufio.NewReader(e.inputStream)
+	pw, err := r.ReadString('\n')
+
+	if err != nil {
+		e.fatalError(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(e.profile.APITimeoutSecs))
+	defer cancel()
+
+	k, statusCode, err := e.apiCaller.CreateAccessKey(ctx, email, pw, false, uint(expiryDays))
+
+	s := e.outputStream
+	cr := "\n"
+
+	if statusCode == 401 {
+		fmt.Fprintln(s, "The email address or password are incorrect.")
+		err := errors.New("Request Failed: (StatusCode = " + strconv.Itoa(statusCode) + ")")
+		e.fatalError(err)
+	}
+
+	if err != nil {
+		e.fatalError(err)
+	}
+
+	fmt.Fprintln(s, "Access Key Created."+cr+cr)
+	fmt.Fprintln(s, "Please copy the information below somewhere safe."+cr+cr)
+
+	str :=
+		"[profiles.default]" + cr +
+			"\t[profiles.default.accessKey]" + cr +
+			"\t\temail = \"" + email + `"` + cr +
+			"\t\tid = \"" + string(k.ID) + `"` + cr +
+			"\t\tsecretAccessKey = \"" + string(k.SecretAccessKey) + `"` + cr
+
+	if expiryDays > 0 {
+		str = str + "\t\texpiryDate = \"" + k.ExpiryDate.UTC().Format(time.RFC3339) + `"` + cr
+	}
+
+	fmt.Fprintln(e.outputStream, str)
+}
+
+// accessKeyCommands defines the subcommands relating to the management of
+// AccessKeys
+func accessKeyCommands(vc *cli.Cmd) {
+	email := vc.StringArg("EMAIL", "", "The email address of the ELS user")
+
+	vc.Command("create", "Create a new API Access Key", func(c *cli.Cmd) {
+		c.Spec = "[EXPIRYDAYS]"
+		expiryDays := c.IntArg("EXPIRYDAYS", 0, "Optional number of days before expiry - if not set, the AccessKey will not expire.")
+		c.Action = func() {
+			gApp.createAccessKey(*email, *expiryDays)
+		}
+	})
 }
 
 // vendorCommands defines the vendor subcommands.
@@ -279,7 +348,6 @@ func getVendor(c *cli.Cmd) {
 // initProfile identifies which profile from the config should be used for
 // default values (if any is set)
 func (e *ELSCLI) initProfile(p string) (err error) {
-	fmt.Println("CALLED INIT PROFILE", p)
 
 	e.profile, err = e.config.Profile(p)
 
@@ -333,6 +401,7 @@ func (e *ELSCLI) init() {
 		e.initProfile(*prof)
 	}
 
+	a.Command("accessKey", "Access Key API", accessKeyCommands)
 	a.Command("vendor", "Vendor API", vendorCommands)
 
 }
@@ -341,7 +410,6 @@ func (e *ELSCLI) init() {
 // command.
 func (e *ELSCLI) Run(cliArgs []string) {
 
-	fmt.Printf("args: %+v", cliArgs)
 	e.init()
 	e.fApp.Run(cliArgs)
 }

@@ -34,6 +34,9 @@ type Profile struct {
 
 	// Output identifies what part of the response to output
 	Output string
+
+	// APITimeoutSecs defines how long to wait for a reply before giving up.
+	APITimeoutSecs int
 }
 
 // Sign implements els.Signer and signs the given request with the access key.
@@ -46,12 +49,26 @@ func (p *Profile) Sign(r *http.Request, now time.Time) error {
 	return s.Sign(r, now)
 }
 
+// ApplyDefaults updates any invalid zero-values to their defaults.
+func (p *Profile) SetDefaults() {
+	if p.MaxAPITries == 0 {
+		p.MaxAPITries = 2
+	}
+
+	if p.Output == "" {
+		p.Output = OutputWhole
+	}
+
+	if p.APITimeoutSecs == 0 {
+		p.APITimeoutSecs = 30
+	}
+}
+
 // NewProfile creates a default profile containing default settings.
 func NewProfile() *Profile {
-	return &Profile{
-		MaxAPITries: 2,
-		Output:      OutputWhole,
-	}
+	p := &Profile{}
+	p.SetDefaults()
+	return p
 }
 
 // Config represents a parsed configuration which provides defaults for commands
@@ -78,5 +95,10 @@ func ReadTOML(r io.Reader) (c *Config, err error) {
 	c = &Config{}
 
 	_, err = toml.DecodeReader(r, c)
+
+	for _, p := range c.Profiles {
+		p.SetDefaults()
+	}
+
 	return c, err
 }

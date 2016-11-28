@@ -31,8 +31,9 @@ var _ = Describe("Config Test Suite", func() {
 		Describe("NewProfile", func() {
 			It("Creates the expected default struct", func() {
 				Expect(*sut).To(BeEquivalentTo(cli.Profile{
-					MaxAPITries: 2,
-					Output:      cli.OutputWhole,
+					MaxAPITries:    2,
+					Output:         cli.OutputWhole,
+					APITimeoutSecs: 30,
 				}))
 			})
 		})
@@ -123,11 +124,13 @@ var _ = Describe("Config Test Suite", func() {
 				BeforeEach(func() {
 					toml = `
                         [profiles.default]
+							apiTimeoutSecs = 20
+							maxAPITries = 3
+							output = "` + cli.OutputStatusCodeOnly + `"
                             [profiles.default.accessKey]
                                 id = "elsID1"
                                 secretAccessKey = "secretAccessKey1"
                                 email = "email1@example.com"
-
                         [profiles.another]
                             [profiles.another.accessKey]
                                 id = "elsID2"
@@ -145,6 +148,9 @@ var _ = Describe("Config Test Suite", func() {
 							SecretAccessKey: "secretAccessKey1",
 							Email:           "email1@example.com",
 						},
+						MaxAPITries:    3,
+						Output:         cli.OutputStatusCodeOnly,
+						APITimeoutSecs: 20,
 					}))
 					p, err = c.Profile("another")
 					Expect(err).To(BeNil())
@@ -154,6 +160,9 @@ var _ = Describe("Config Test Suite", func() {
 							SecretAccessKey: "secretAccessKey2",
 							Email:           "email2@example.com",
 						},
+						MaxAPITries:    2,
+						Output:         cli.OutputWhole,
+						APITimeoutSecs: 30,
 					}))
 				})
 			})

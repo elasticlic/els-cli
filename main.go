@@ -59,6 +59,6 @@ func main() {
 	p := NewCLIPipe()
 
 	// Inject and Run:
-	ELSCLI := NewELSCLI(ca, c, cFile, tp, fs, a, p, os.Stdout, os.Stderr)
+	ELSCLI := NewELSCLI(ca, c, cFile, tp, fs, a, p, os.Stdin, os.Stdout, os.Stderr)
 	ELSCLI.Run(os.Args)
 }

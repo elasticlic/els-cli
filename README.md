@@ -40,26 +40,27 @@ optional parameters which affect the behaviour of the els-cli. `els-cli.config`
 contains one or more profiles identified by *ProfileID*, and you can specify
 which profile to use by invoking els-cli as follows:
 
-    els-cli --profile "myProfile" [rest of command]
+    els-cli --profile "bob" [rest of command]
 
 If you don't specify a profile, the els-cli will use **default** profile. Here
 is an example of an `els-cli.config` file:
 
 ```bash
-[default]
+[profiles.default]
   maxAPITries = 2
-  [default.AccessKey]
+  [profiles.default.AccessKey]
     email = "clara@example.com"
-    accessKeyId = "MYACCESSKEYID"
+    id = "MYACCESSKEYID"
     secretAccessKey = "MYSECRET"
 
 
-[myOtherProfile]
+[profiles.bob]
   maxAPITries = 3
-  [myOtherProfile.AccessKey]
+  [profiles.bob.AccessKey]
     email = "suni@example.com"
-    accessKeyId = "ANOTHERACCESSKEYID"
+    id = "ANOTHERACCESSKEYID"
     secretAccessKey = "ANOTHERSECRET"
+    expiryDate = "2017-02-01T12:00:00Z"
 ```
 
 ## Prerequisites
