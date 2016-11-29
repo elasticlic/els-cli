@@ -228,15 +228,8 @@ func (e *ELSCLI) getVendor(vendorId string) {
 	}
 }
 
-// putVendor updates or creates a vendor.
-func (e *ELSCLI) deleteAccessKey(email string, kID els.AccessKeyID) {
-	if err := e.makeCall("DELETE", "/users/"+email+"/accessKeys/"+string(kID), ""); err != nil {
-		e.fatalError(err)
-	}
-}
-
-// createRuleset defines or updates a ruleset with the given id.
-func (e *ELSCLI) createRuleset(vendorId string, rulesetID string, inputFilename string) {
+// putRuleset defines or updates a ruleset with the given id.
+func (e *ELSCLI) putRuleset(vendorId string, rulesetID string, inputFilename string) {
 	URL := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID
 
 	if err := e.makeCall("PUT", URL, inputFilename); err != nil {
@@ -309,6 +302,13 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 	fmt.Fprintln(e.outputStream, str)
 }
 
+// putVendor updates or creates a vendor.
+func (e *ELSCLI) deleteAccessKey(email string, kID els.AccessKeyID) {
+	if err := e.makeCall("DELETE", "/users/"+email+"/accessKeys/"+string(kID), ""); err != nil {
+		e.fatalError(err)
+	}
+}
+
 // vendorCommands defines commands relating to the Vendor API. Note that some
 // of these routes are only accessible to ELS role-holders.
 func vendorCommands(vendorC *cli.Cmd) {
@@ -336,7 +336,7 @@ func vendorCommands(vendorC *cli.Cmd) {
 			c.Spec = "[SRC]"
 			content := c.StringArg("SRC", "", "The file containing the JSON defining the ruleset")
 			c.Action = func() {
-				gApp.createRuleset(*vendorId, *rulesetID, *content)
+				gApp.putRuleset(*vendorId, *rulesetID, *content)
 			}
 		})
 
