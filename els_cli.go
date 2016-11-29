@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"os/user"
 	"strconv"
 	"time"
@@ -38,36 +36,6 @@ var (
 	ErrNoContent      = errors.New("No Content Provided - either provide a filename or pipe content to the command")
 	ErrApiUnreachable = errors.New("The ELS API could not be reached. Are you connected to the internet?")
 )
-
-// Pipe is the interface which defines methods operating on data piped to
-// the command via the command-line.
-type Pipe interface {
-	Reader() (io.ReadCloser, error)
-}
-
-// CLIPipe is used to read data piped to the els-cli from the commmand-line.
-type CLIPipe struct{}
-
-func NewCLIPipe() *CLIPipe {
-	return &CLIPipe{}
-}
-
-// Reader implements interface Pipe and returns a Reader which can be used to
-// read the data passed to the els-cli via a command-line pipe.
-func (p *CLIPipe) Reader() (io.ReadCloser, error) {
-	info, err := os.Stdin.Stat()
-
-	if err != nil {
-		return nil, err
-	}
-
-	if (info.Mode()&os.ModeCharDevice) != 0 || info.Size() == 0 {
-		// no data from a pipe - ignore
-		return nil, ErrNoContent
-	}
-
-	return os.Stdin, nil
-}
 
 // ELSCLI represents our App.
 type ELSCLI struct {
@@ -97,9 +65,8 @@ type ELSCLI struct {
 	// pipe allows access to data piped from the command-line to the app.
 	pipe Pipe
 
-	// inputStream io.Reader is the stream which is used to enter passwords
-	// when requesting a new key.
-	inputStream io.Reader
+	// pw is used to obtain a password from the user.
+	pw Passworder
 
 	// outputStream is the stream to which results are written.
 	outputStream io.Writer
@@ -121,7 +88,7 @@ func NewELSCLI(
 	fs afero.Fs,
 	a els.APICaller,
 	p Pipe,
-	i io.Reader,
+	pw Passworder,
 	o io.Writer,
 	e io.Writer) *ELSCLI {
 	return &ELSCLI{
@@ -132,7 +99,7 @@ func NewELSCLI(
 		apiCaller:    a,
 		fs:           fs,
 		pipe:         p,
-		inputStream:  i,
+		pw:           pw,
 		outputStream: o,
 		errorStream:  e,
 	}
@@ -261,13 +228,38 @@ func (e *ELSCLI) getVendor(vendorId string) {
 	}
 }
 
-//createAccessKey asks for a password then makes a request to retrieve a new
-// AccessKey for the user.
-func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
-	fmt.Fprintln(e.outputStream, "Enter password: ")
+// putVendor updates or creates a vendor.
+func (e *ELSCLI) deleteAccessKey(email string, kID els.AccessKeyID) {
+	if err := e.makeCall("DELETE", "/users/"+email+"/accessKeys/"+string(kID), ""); err != nil {
+		e.fatalError(err)
+	}
+}
 
-	r := bufio.NewReader(e.inputStream)
-	pw, err := r.ReadString('\n')
+// createRuleset defines or updates a ruleset with the given id.
+func (e *ELSCLI) createRuleset(vendorId string, rulesetID string, inputFilename string) {
+	URL := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID
+
+	if err := e.makeCall("PUT", URL, inputFilename); err != nil {
+		e.fatalError(err)
+	}
+}
+
+// activateRuleset makes the given ruleset now the one which is used to generate
+// live pricing for the vendor's products (when using Fuel).
+func (e *ELSCLI) activateRuleset(vendorId string, rulesetID string) {
+	URL := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID + "/activate"
+
+	if err := e.makeCall("PATCH", URL, ""); err != nil {
+		e.fatalError(err)
+	}
+}
+
+//createAccessKey asks for a password then makes a request to retrieve a new
+// AccessKey for the user. If successful, it outputs the key as it should be
+// declared in a default profile.
+func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
+
+	password, err := e.pw.GetPassword()
 
 	if err != nil {
 		e.fatalError(err)
@@ -276,7 +268,7 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(e.profile.APITimeoutSecs))
 	defer cancel()
 
-	k, statusCode, err := e.apiCaller.CreateAccessKey(ctx, email, pw, false, uint(expiryDays))
+	k, statusCode, err := e.apiCaller.CreateAccessKey(ctx, email, password, false, uint(expiryDays))
 
 	s := e.outputStream
 	cr := "\n"
@@ -291,8 +283,9 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 		e.fatalError(err)
 	}
 
-	fmt.Fprintln(s, "Access Key Created."+cr+cr)
-	fmt.Fprintln(s, "Please copy the information below somewhere safe."+cr+cr)
+	fmt.Fprintln(s, "Access Key Created - shown below in a 'default' profile.")
+	fmt.Fprintln(s, "To sign API calls made by the els-cli with this access key,")
+	fmt.Fprintln(s, "add the profile to ~/.els/els-cli.toml ."+cr)
 
 	str :=
 		"[profiles.default]" + cr +
@@ -308,25 +301,12 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 	fmt.Fprintln(e.outputStream, str)
 }
 
-// accessKeyCommands defines the subcommands relating to the management of
-// AccessKeys
-func accessKeyCommands(vc *cli.Cmd) {
-	email := vc.StringArg("EMAIL", "", "The email address of the ELS user")
+// vendorCommands defines commands relating to the Vendor API. Note that some
+// of these routes are only accessible to ELS role-holders.
+func vendorCommands(vendorC *cli.Cmd) {
+	vendorId := vendorC.StringArg("VENDORID", "", "The ELS id of the vendor")
 
-	vc.Command("create", "Create a new API Access Key", func(c *cli.Cmd) {
-		c.Spec = "[EXPIRYDAYS]"
-		expiryDays := c.IntArg("EXPIRYDAYS", 0, "Optional number of days before expiry - if not set, the AccessKey will not expire.")
-		c.Action = func() {
-			gApp.createAccessKey(*email, *expiryDays)
-		}
-	})
-}
-
-// vendorCommands defines the vendor subcommands.
-func vendorCommands(vc *cli.Cmd) {
-	vendorId := vc.StringArg("VENDORID", "", "The ELS id of the vendor")
-
-	vc.Command("put", "Update or Create a vendor", func(c *cli.Cmd) {
+	vendorC.Command("put", "Update or Create a vendor", func(c *cli.Cmd) {
 		c.Spec = "[SRC]"
 		content := c.StringArg("SRC", "", "The file containing the JSON defining the vendor")
 		c.Action = func() {
@@ -334,15 +314,49 @@ func vendorCommands(vc *cli.Cmd) {
 		}
 	})
 
-	vc.Command("get", "Get a vendor", getVendor)
+	vendorC.Command("get", "Get details about a vendor", func(c *cli.Cmd) {
+		c.Action = func() {
+			gApp.getVendor(*vendorId)
+		}
+	})
+
+	vendorC.Command("rulesets", "Manage Fuel Charging Rulesets - used to generate pricing for Fuel.", func(rulesetsC *cli.Cmd) {
+		rulesetID := rulesetsC.StringArg("RULESETID", "", "The ID of the ruleset")
+
+		rulesetsC.Command("put", "Create or update a Fuel Charging Ruleset - note you cannot update an activated (live) ruleset.", func(c *cli.Cmd) {
+			c.Spec = "[SRC]"
+			content := c.StringArg("SRC", "", "The file containing the JSON defining the ruleset")
+			c.Action = func() {
+				gApp.createRuleset(*vendorId, *rulesetID, *content)
+			}
+		})
+		rulesetsC.Command("activate", "Activate Fuel Charging Ruleset - i.e. it will be the ruleset currently used to define prices", func(c *cli.Cmd) {
+			c.Action = func() {
+				gApp.activateRuleset(*vendorId, *rulesetID)
+			}
+		})
+	})
 }
 
-func getVendor(c *cli.Cmd) {
-	//c.Spec = "VendorID..."
-	//	vendor := c.StringsArg("VendorID", nil, "")
-	c.Action = func() {
-		fmt.Println("Get vendor called")
-	}
+// userCommands defines the commands relating to the User API.
+func userCommands(userC *cli.Cmd) {
+	email := userC.StringArg("EMAIL", "", "The email address of the user")
+
+	userC.Command("accessKeys", "Manage Access Keys", func(accessKeysC *cli.Cmd) {
+		accessKeysC.Command("create", "Create a new API Access Key", func(c *cli.Cmd) {
+			c.Spec = "[EXPIRYDAYS]"
+			expiryDays := c.IntArg("EXPIRYDAYS", 30, "Number of days before expiry.")
+			c.Action = func() {
+				gApp.createAccessKey(*email, *expiryDays)
+			}
+		})
+		accessKeysC.Command("delete", "Delete an API Access Key", func(c *cli.Cmd) {
+			keyId := c.StringArg("ACCESSKEYID", "", "The ID of the Access Key to be deleted")
+			c.Action = func() {
+				gApp.deleteAccessKey(*email, els.AccessKeyID(*keyId))
+			}
+		})
+	})
 }
 
 // initProfile identifies which profile from the config should be used for
@@ -401,8 +415,8 @@ func (e *ELSCLI) init() {
 		e.initProfile(*prof)
 	}
 
-	a.Command("accessKey", "Access Key API", accessKeyCommands)
-	a.Command("vendor", "Vendor API", vendorCommands)
+	a.Command("users", "User API", userCommands)
+	a.Command("vendors", "Vendor API", vendorCommands)
 
 }
 

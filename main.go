@@ -50,15 +50,15 @@ func readConfig() (*Config, string) {
 }
 
 func main() {
-	// Dependency creation:
 	c, cFile := readConfig()
 	ca := cli.App("els-cli", "Make API calls to Elastic Licensing")
 	tp := datetime.NewNowTimeProvider()
 	a := els.NewEDAPICaller(nil, tp, time.Second*5, "")
 	fs := afero.NewOsFs()
 	p := NewCLIPipe()
+	pw := NewHiddenPassworder(os.Stdout)
 
-	// Inject and Run:
-	ELSCLI := NewELSCLI(ca, c, cFile, tp, fs, a, p, os.Stdin, os.Stdout, os.Stderr)
+	ELSCLI := NewELSCLI(ca, c, cFile, tp, fs, a, p, pw, os.Stdout, os.Stderr)
+
 	ELSCLI.Run(os.Args)
 }

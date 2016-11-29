@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
-	"strings"
 	"time"
 
 	"github.com/elasticlic/els-api-sdk-go/els"
@@ -43,7 +42,7 @@ var _ = Describe("els_cliTest Suite", func() {
 		pipe        = &MockPipe{}
 		fs          = afero.NewMemMapFs()
 		pw          = "password"
-		inS         = strings.NewReader(pw)
+		pwr         = cli.NewStringPassworder(pw, nil)
 		outS        bytes.Buffer
 		errS        bytes.Buffer
 		ID          = els.AccessKeyID("anID")
@@ -73,7 +72,7 @@ var _ = Describe("els_cliTest Suite", func() {
 			}
 			prof = config.Profiles["default"]
 
-			sut = cli.NewELSCLI(fr, &config, cFile, tp, fs, ac, pipe, inS, &outS, &errS)
+			sut = cli.NewELSCLI(fr, &config, cFile, tp, fs, ac, pipe, pwr, &outS, &errS)
 		})
 
 		JustBeforeEach(func() {
@@ -84,7 +83,7 @@ var _ = Describe("els_cliTest Suite", func() {
 			// These tests are the only place we'll test the pipe input and
 			// the different output types
 			BeforeEach(func() {
-				args = append(args, "vendor", vendorId, "put")
+				args = append(args, "vendors", vendorId, "put")
 			})
 			Context("JSON is piped to the command-line", func() {
 				BeforeEach(func() {
@@ -104,7 +103,7 @@ var _ = Describe("els_cliTest Suite", func() {
 
 		XDescribe("vendor", func() {
 			BeforeEach(func() {
-				args = append(args, "vendor", vendorId)
+				args = append(args, "vendors", vendorId)
 			})
 
 			Describe("put", func() {

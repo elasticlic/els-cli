@@ -68,14 +68,103 @@ is an example of an `els-cli.config` file:
 ### Create an Access Key
 To create an Access Key for the first time, do the following:
 
-    els-cli user EMAILADDRESS accessKey create
+    els-cli users EMAILADDRESS accessKey create [NUMDAYS]
+
+e.g.
+
+    els-cli users user@example.com accessKeys create
+
+will create an Access Key which expires after a default period of 30 days, and
+
+    els-cli users user@example.com accessKeys create 10
+
+will create an Access Key which expires in 10 days.
 
 ### Install the Access Key in a config Profile
 
-ABHERE
+When you create an access key, you can make the els-cli use it by including it
+in a profile saved to its config file, which is located at `~/.els/els-cli.toml`.
+
+The data shown after successfully creating an Access Key can be written to the
+config file, and defines the default profile - i.e. the profile that will be
+used by els-cli if you don't specify a profile with --profile.
 
 ## Vendor Examples
 
+### Create a new Fuel Charging Ruleset
+
+A Ruleset defines the rules which define how much Fuel a Feature consumes. There
+is only ever one live Ruleset, but you can upload another and make it live
+later. It is not possible to change a ruleset which is currently live. Instead,
+upload a new ruleset and make it live.
+
+To create a new ruleset, do:
+
+    els-cli vendors VENDORID rulesets RULESETID create RULESETFILE
+
+or
+
+    echo RULESETFILE | els-cli vendors VENDORID rulesets RULESETID create
+
+Where RULESETFILE is a file containg valid JSON defining the rules.
+
+E.g. if the following ruleset is stored in file **ruleset_2016-02.json**
+
+```json
+{
+  "rulesetDoc": {
+    "rules": [
+      {
+        "id": "rule1",
+        "title": "Laser Attack Pro Base Charge",
+        "evaluator": {
+            "operator": "A",
+            "conditions": [
+              {
+                 "source"    : "feature",
+                 "attribute" : "id",
+                 "test"      : "is",
+                 "value"     : "Laser Attack Pro"
+              }
+            ]
+        },
+        "actions": [
+          {
+             "target": "featureRate",
+             "operation": "set",
+             "currency": "GBP",
+             "unit": "hour",
+             "value": 0.01
+          },
+          {
+             "target": "featureRate",
+             "operation": "set",
+             "currency": "EUR",
+             "unit": "hour",
+             "value": 0.011
+          }
+        ]
+      }
+    ]
+  }
+}
+
+```
+then you can create this ruleset by doing:
+
+    els-cli vendors sharkSoft rulesets 2016-02 create ruleset_2016-02.json
+
+or
+
+    echo ruleset_2016-02.json | els-cli vendors sharkSoft rulesets 2016-02 create
+
+
+**Note that a ruleset will not be used until you activate it.** - See below...
+
+### Activate an uploaded ruleset
+
+This will cause the ruleset to be live, and fuel consumption prices will be
+calculated with this ruleset immediately.
 
 ### Put a vendor
 
