@@ -254,6 +254,14 @@ func (e *ELSCLI) activateRuleset(vendorId string, rulesetID string) {
 	}
 }
 
+// getRulesets lists all the rulesets.
+func (e *ELSCLI) getRulesets(vendorId string) {
+
+	if err := e.get("/vendors/" + vendorId + "/paygRuleSets/"); err != nil {
+		e.fatalError(err)
+	}
+}
+
 //createAccessKey asks for a password then makes a request to retrieve a new
 // AccessKey for the user. If successful, it outputs the key as it should be
 // declared in a default profile.
@@ -304,6 +312,7 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 // vendorCommands defines commands relating to the Vendor API. Note that some
 // of these routes are only accessible to ELS role-holders.
 func vendorCommands(vendorC *cli.Cmd) {
+	vendorC.Spec = "[VENDORID]"
 	vendorId := vendorC.StringArg("VENDORID", "", "The ELS id of the vendor")
 
 	vendorC.Command("put", "Update or Create a vendor", func(c *cli.Cmd) {
@@ -330,6 +339,13 @@ func vendorCommands(vendorC *cli.Cmd) {
 				gApp.createRuleset(*vendorId, *rulesetID, *content)
 			}
 		})
+
+		rulesetsC.Command("get", "List all the rulesets", func(c *cli.Cmd) {
+			c.Action = func() {
+				gApp.getRulesets(*vendorId)
+			}
+		})
+
 		rulesetsC.Command("activate", "Activate Fuel Charging Ruleset - i.e. it will be the ruleset currently used to define prices", func(c *cli.Cmd) {
 			c.Action = func() {
 				gApp.activateRuleset(*vendorId, *rulesetID)
