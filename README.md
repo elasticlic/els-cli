@@ -1,5 +1,6 @@
 # els-cli
-A commandline tool for interacting with the Elastic Licensing API.
+A commandline tool for interacting with the Elastic Licensing API. This tool
+complements the online dashboards and direct use of the API.
 
 ## Terminology
 
@@ -10,21 +11,34 @@ the Elastic API - an HTTP REST Service.
 password. Most API calls must be made by a user, identified not by email address
 and password but by *Access Key*.
 
-**Elastic App** - An App which includes the **Elastic Client Library**.
+**Entity** - An entity is an account in Elastic Licensing. There are four types:
+* customer account
+* vendor account
+* a cloud
+* the Elastic Licensing Service itself.
 
-**Access Key** - A key associated with a user, consisting of a public string
-called the *AccessKeyID*, and a secret string called the *SecretAccessKey*.
-Access Keys enable the user to keep their password secret. A user can change
-their password without affecting any of their Access Keys, and can give another
-person an Access Key without revealing their password. Access Keys are used to
-**ELS-sign** an API call. A special API call lets a user create a new Access Key.
-Access Keys can optionally expire, or be explicitly
-deleted at any time. When an Elastic App is used, it can be invoked with
-command-line arguments passing the Access Key to avoid the need to sign in on
-startup.
+**Role** - A user may hold one or more *roles* for one or more entities. For
+example, a person may be the primary contact both for their own indvidual
+customer account, and the customer account used by their place of work. When
+using the API or the dashboards, the roles held by the signed-in user determine
+what the user is permitted to see and do.
+
+**Elastic App** - An App which includes the **Elastic Client Library**, and so
+can use Elastic Licensing to control access by users.
 
 **ELS-sign** - means to calculate and add a signature to an HTTP request so that
 the ELS can be sure who made the API call.
+
+**Access Key** - A key associated with a user, consisting of a public string
+called the *AccessKeyID*, and a secret string called the *SecretAccessKey*.
+Access Keys are used to ELS-sign an API call. Access Keys can optionally expire,
+can be deleted at any time and avoid exposing personal passwords. When an
+Elastic App is used an automated context (e.g. a render job), an AccessKeyID and
+SecretAccessKey can be presented on the commandline to avoid needing a user to
+provide a password.
+
+Access Keys can be created either via a special API call, or using the els-cli.
+See below for details.
 
 **els-cli.toml** - a config file used by els-cli to provide certain values
 and defaults. The config contains one or more *Profiles*. and should be placed
@@ -32,10 +46,9 @@ at the following location:
 
     ~/.els/els-cli.toml
 
-The contents are [TOML](https://github.com/toml-lang/toml) - Tom's Obvious
-Minimal Language
+The contents are in [TOML](https://github.com/toml-lang/toml) format.
 
-**Profile** - defines the Access Key to use to ELS-sign API calls, as well as
+**Profile** - defines which Access Key will ELS-sign API calls, and other
 optional parameters which affect the behaviour of the els-cli. `els-cli.config`
 contains one or more profiles identified by *ProfileID*, and you can specify
 which profile to use by invoking els-cli as follows:
@@ -89,9 +102,9 @@ The data shown after successfully creating an Access Key can be written to the
 config file, and defines the default profile - i.e. the profile that will be
 used by els-cli if you don't specify a profile with --profile.
 
-## Vendor Examples
+## Examples
 
-### Create a new Fuel Charging Ruleset
+### Create a new Fuel Charging Ruleset (Vendor role-holders only)
 
 A Ruleset defines the rules which define how much Fuel a Feature consumes. There
 is only ever one live Ruleset, but you can upload another and make it live
@@ -159,14 +172,14 @@ or
     echo ruleset_2016-02.json | els-cli vendors sharkSoft rulesets 2016-02 create
 
 
-**Note that a ruleset will not be used until you activate it.** - See below...
+**Note that a ruleset will not be used until you activate it** - See below...
 
 ### Activate an uploaded ruleset
 
 This will cause the ruleset to be live, and fuel consumption prices will be
 calculated with this ruleset immediately.
 
-### Put a vendor
+### Put a vendor (Elastic Licensing role-holders only)
 
 To create or update a vendor, either prepare a file containing the JSON defining
 the record, or
