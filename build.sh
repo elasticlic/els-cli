@@ -31,7 +31,9 @@ function build {
     DST_DIR="_releases/${VERSION}"
     DST="$DST_DIR"/els-cli-v"$VERSION"-"$GOOS"-"$GOARCH"$(extension)
 
-    strip "$OUTPUT"
+    if [ "$GOOS" != darwin ]; then
+        strip "$OUTPUT"
+    fi
     mkdir -p "$DST_DIR"
     mv -f "$OUTPUT" "$DST"
 }
