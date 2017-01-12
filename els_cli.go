@@ -27,6 +27,9 @@ import (
 // store a context within the cli.Cmd.
 var gApp *ELSCLI
 
+// Version identifies the version of the CLI.
+const Version = "0.0.2"
+
 const (
 	// APIRetryInterval governs the initial throttling of an API retry
 	APIRetryInterval = time.Millisecond * 500
@@ -420,7 +423,7 @@ func (e *ELSCLI) init() {
 
 	a := e.fApp
 
-	a.Version("v version", "0.0.1d")
+	a.Version("v version", Version)
 	prof := a.String(cli.StringOpt{
 		Name:   "p profile",
 		Value:  "default",
