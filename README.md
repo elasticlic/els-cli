@@ -205,7 +205,7 @@ To make a new release, do the following:
         git tag <version>
         git push origin --tags
 
-4. Run `build.sh <version`
+4. Run `build.sh <version>`
 
 5. Upload the artifacts from `_releases/<version>` to the
 [github els-cli releases page](https://github.com/elasticlic/els-cli/releases).
