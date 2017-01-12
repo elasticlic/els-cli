@@ -8,7 +8,6 @@
 # e.g. build.sh 1.7.4
 
 set -e
-set -x
 
 function extension {
     if [ "$GOOS" == "windows" ]; then
