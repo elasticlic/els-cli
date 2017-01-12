@@ -52,3 +52,4 @@ fi
 
 build linux amd64
 build windows amd64
+build darwin amd64
