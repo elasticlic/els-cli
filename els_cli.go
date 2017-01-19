@@ -37,11 +37,15 @@ const (
 
 var (
 	ErrNoContent      = errors.New("No Content Provided - either provide a filename or pipe content to the command")
+	ErrInvalidOutput  = errors.New("Invalid output specified")
 	ErrApiUnreachable = errors.New("The ELS API could not be reached. Are you connected to the internet?")
 )
 
 // ELSCLI represents our App.
 type ELSCLI struct {
+
+	// err represents a fatal error which interrupted normal execution
+	fatalErr error
 
 	// fApp is a framework which parses the commandline.
 	fApp *cli.Cli
@@ -112,7 +116,7 @@ func NewELSCLI(
 // cannot be automatically captured by the cli framework.
 func (e *ELSCLI) fatalError(err error) {
 	log.WithFields(log.Fields{"Time": e.tp.Now(), "Error": err}).Debug("Fatal Error")
-	cli.Exit(-1)
+	fmt.Fprintln(e.errorStream, err.Error())
 }
 
 // tryRequest makes a single attempt to do an API call
@@ -192,7 +196,7 @@ func (e *ELSCLI) writeResponse(rep *http.Response) error {
 		defer rep.Body.Close()
 	}
 
-	getBody := (e.profile.Output != OutputStatusCodeOnly) && (rep.Body != nil) && rep.ContentLength > 0
+	getBody := (e.profile.Output != OutputStatusCodeOnly) && (rep.Body != nil)
 
 	var prettyJSON bytes.Buffer
 
@@ -201,6 +205,7 @@ func (e *ELSCLI) writeResponse(rep *http.Response) error {
 		if err != nil {
 			return err
 		}
+
 		if err := json.Indent(&prettyJSON, data, "", "\t"); err != nil {
 			return err
 		}
@@ -267,6 +272,7 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 
 	if err != nil {
 		e.fatalError(err)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(e.profile.APITimeoutSecs))
@@ -279,12 +285,12 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 
 	if statusCode == 401 {
 		fmt.Fprintln(s, "The email address or password are incorrect.")
-		err := errors.New("Request Failed: (StatusCode = " + strconv.Itoa(statusCode) + ")")
-		e.fatalError(err)
+		err = errors.New("Request Failed: (StatusCode = " + strconv.Itoa(statusCode) + ")")
 	}
 
 	if err != nil {
 		e.fatalError(err)
+		return
 	}
 
 	fmt.Fprintln(s, "Access Key Created - shown below in a 'default' profile.")
@@ -305,9 +311,17 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 	fmt.Fprintln(e.outputStream, str)
 }
 
-// putVendor updates or creates a vendor.
+// deleteAccessKey tries to delete the Access Key whose ID is kID and whose user
+// is email.
 func (e *ELSCLI) deleteAccessKey(email string, kID els.AccessKeyID) {
 	if err := e.makeCall("DELETE", "/users/"+email+"/accessKeys/"+string(kID), ""); err != nil {
+		e.fatalError(err)
+	}
+}
+
+// listAccessKeys lists the AccessKeys relating to a user
+func (e *ELSCLI) listAccessKeys(email string) {
+	if err := e.makeCall("GET", "/users/"+email+"/accessKeys", ""); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -375,12 +389,18 @@ func userCommands(userC *cli.Cmd) {
 				gApp.deleteAccessKey(*email, els.AccessKeyID(*keyId))
 			}
 		})
+		accessKeysC.Command("list", "List API Access Keys", func(c *cli.Cmd) {
+			c.Action = func() {
+				gApp.listAccessKeys(*email)
+			}
+		})
 	})
 }
 
 // initProfile identifies which profile from the config should be used for
-// default values (if any is set)
-func (e *ELSCLI) initProfile(p string) (err error) {
+// default values (if any is set). An optional output o can be used to override
+// the default output in the profile.
+func (e *ELSCLI) initProfile(p string, o string) (err error) {
 
 	e.profile, err = e.config.Profile(p)
 
@@ -388,6 +408,11 @@ func (e *ELSCLI) initProfile(p string) (err error) {
 	// doesn't exist in the config, don't flag the error.
 	if err != nil && p != "default" {
 		return ErrProfileNotFound
+	}
+
+	// overrides
+	if o != "" {
+		e.profile.Output = o
 	}
 
 	return nil
@@ -414,9 +439,10 @@ func (e *ELSCLI) initLog() error {
 }
 
 // init sets up the app prior to parsing the commandline.
-func (e *ELSCLI) init() {
+func (e *ELSCLI) init() error {
 	if err := e.initLog(); err != nil {
 		e.fatalError(err)
+		return err
 	}
 	// store our app for access from the framework callbacks later:
 	gApp = e
@@ -430,19 +456,34 @@ func (e *ELSCLI) init() {
 		Desc:   "specify which profile in ~/.els/els-cli.config supplies credentials",
 		EnvVar: "ELSCLI_PROFILE",
 	})
+
+	output := a.String(cli.StringOpt{
+		Name:   "o output",
+		Value:  "",
+		Desc:   "Overrides the output format defined in the profile: Must be: wholeResponse|bodyOnly|statusCodeOnly",
+		EnvVar: "ELSCLI_OUTPUT",
+	})
 	a.Before = func() {
-		e.initProfile(*prof)
+		e.initProfile(*prof, *output)
 	}
 
 	a.Command("users", "User API", userCommands)
 	a.Command("vendors", "Vendor API", vendorCommands)
 
+	return nil
 }
 
 // Run parses the command line arguments and tries to identify and execute a
-// command.
-func (e *ELSCLI) Run(cliArgs []string) {
+// command. It returns any fatal errors - e.g. configuration errors or usage
+// errors. It does not return an error if a request failed because of ELS
+// permissions (for example)
+func (e *ELSCLI) Run(cliArgs []string) error {
 
-	e.init()
+	if err := e.init(); err != nil {
+		return err
+	}
+
 	e.fApp.Run(cliArgs)
+
+	return e.fatalErr
 }

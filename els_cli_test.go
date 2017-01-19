@@ -31,11 +31,12 @@ func (p *MockPipe) Reader() (io.ReadCloser, error) {
 var _ = Describe("els_cliTest Suite", func() {
 
 	var (
-		//err    error
+		fatalErr    error
 		config      cli.Config
 		cFile       = "aConfigFile"
 		jFile       = "t.json"
 		pw          = "password"
+		expiryDays  = 30
 		pwr         = cli.NewStringPassworder(pw, nil)
 		ID          = els.AccessKeyID("anID")
 		SAC         = els.SecretAccessKey("aSAC")
@@ -47,6 +48,12 @@ var _ = Describe("els_cliTest Suite", func() {
 		vendorID        = "aVendor"
 		rulesetID       = "aRuleset"
 		maxAPITries int = 1
+		accessKey       = els.AccessKey{
+			ID:              ID,
+			SecretAccessKey: SAC,
+			Email:           email,
+			ExpiryDate:      expiry,
+		}
 	)
 
 	Describe("ELSCLI", func() {
@@ -64,17 +71,19 @@ var _ = Describe("els_cliTest Suite", func() {
 
 			// checkSentContent checks if the els-cli passed on the expected content
 			// in the body of the request to the ELS.
-			checkSentContent = func() {
+			checkSentContent = func(json string) {
 				sentJ, err := ioutil.ReadAll(ac.GetCall(0).ACArgs.Req.Body)
 				Expect(err).To(BeNil())
-				Expect(sentJ).To(MatchJSON(reqJ))
+				Expect(sentJ).To(MatchJSON(json))
 			}
 
 			// checkOutputContent checks if the els-cli emitted the JSON response
 			// body received from the ELS.
-			checkOutputContent = func() {
+			checkOutputContent = func(json string) {
 				Expect(errS.String()).To(BeZero())
-				Expect(outS.String()).To(MatchJSON(repJ))
+				if json != "" {
+					Expect(outS.String()).To(MatchJSON(json))
+				}
 			}
 
 			checkRequest = func(httpMethod string, URL string) {
@@ -84,9 +93,9 @@ var _ = Describe("els_cliTest Suite", func() {
 
 			// initAPIResponse sets a simple expectation on an APICaller method
 			// being invoked and a response returned.
-			initResponse = func(callMethod string, statusCode int) {
+			initResponse = func(callMethod string, statusCode int, repJson string) {
 				ac.AddExpectedCall(callMethod, em.APICall{
-					ACRep: em.ACRep{Rep: em.HTTPResponse(statusCode, repJ)},
+					ACRep: em.ACRep{Rep: em.HTTPResponse(statusCode, repJson)},
 				})
 			}
 		)
@@ -103,12 +112,7 @@ var _ = Describe("els_cliTest Suite", func() {
 			errS = bytes.Buffer{}
 			config.Profiles = make(map[string]*cli.Profile)
 			config.Profiles["default"] = &cli.Profile{
-				AccessKey: els.AccessKey{
-					ID:              ID,
-					SecretAccessKey: SAC,
-					Email:           email,
-					ExpiryDate:      expiry,
-				},
+				AccessKey:   accessKey,
 				MaxAPITries: maxAPITries,
 				Output:      cli.OutputBodyOnly,
 			}
@@ -118,7 +122,8 @@ var _ = Describe("els_cliTest Suite", func() {
 		})
 
 		JustBeforeEach(func() {
-			sut.Run(args)
+
+			fatalErr = sut.Run(args)
 		})
 
 		Describe("General Response Processing", func() {
@@ -131,11 +136,11 @@ var _ = Describe("els_cliTest Suite", func() {
 				BeforeEach(func() {
 					pipe.Data = reqJ
 
-					initResponse("Do", 200)
+					initResponse("Do", 200, repJ)
 				})
 				It("Receives a result from the API", func() {
-					checkSentContent()
-					checkOutputContent()
+					checkSentContent(reqJ)
+					checkOutputContent(repJ)
 				})
 			})
 			Context("A file containing JSON is specified on the commandline", func() {
@@ -146,11 +151,130 @@ var _ = Describe("els_cliTest Suite", func() {
 					// access:
 					afero.WriteFile(fs, jFile, []byte(reqJ), 0644)
 
-					initResponse("Do", 200)
 				})
-				It("Sends the correct content and outputs the  API response body", func() {
-					checkSentContent()
-					checkOutputContent()
+				Context("200 is returned", func() {
+					BeforeEach(func() {
+						initResponse("Do", 200, repJ)
+					})
+					It("Sends the correct content and outputs the  API response body", func() {
+						checkSentContent(reqJ)
+						checkOutputContent(repJ)
+					})
+				})
+
+				Context("401 is retured", func() {
+					BeforeEach(func() {
+						config.Profiles["default"].Output = cli.OutputWhole
+						initResponse("Do", 401, "")
+					})
+					It("Reports the error", func() {
+						checkSentContent(reqJ)
+						Expect(outS.String()).Should(HavePrefix("401"))
+					})
+				})
+			})
+		})
+
+		Describe("user", func() {
+			BeforeEach(func() {
+				args = append(args, "users", email)
+			})
+
+			Describe("accessKey", func() {
+				BeforeEach(func() {
+					args = append(args, "accessKeys")
+				})
+				Describe("create", func() {
+					BeforeEach(func() {
+						args = append(args, "create")
+					})
+
+					Context("The correct password is entered", func() {
+						BeforeEach(func() {
+							ac.AddExpectedCall("CreateAccessKey", em.APICall{
+								ACRep: em.ACRep{
+									StatusCode: 201,
+									AccessKey:  &accessKey,
+								},
+							})
+						})
+						It("Returns the expected access key", func() {
+							args := ac.GetCall(0).ACArgs
+							Expect(args.EmailAddress).To(Equal(email))
+							Expect(args.Password).To(Equal(pw))
+							Expect(args.ExpiryDays).To(BeEquivalentTo(expiryDays))
+
+							Expect(outS.String()).Should(HavePrefix("Access Key Created"))
+							Expect(outS.String()).Should(ContainSubstring(accessKey.Email))
+							Expect(outS.String()).Should(ContainSubstring(string(accessKey.SecretAccessKey)))
+							Expect(outS.String()).Should(ContainSubstring(string(accessKey.ID)))
+						})
+					})
+					Context("An invalid password is entered", func() {
+						BeforeEach(func() {
+							ac.AddExpectedCall("CreateAccessKey", em.APICall{
+								ACRep: em.ACRep{
+									StatusCode: 401,
+								},
+							})
+						})
+						It("Returns the failure statuscode", func() {
+							args := ac.GetCall(0).ACArgs
+							Expect(args.EmailAddress).To(Equal(email))
+							Expect(args.Password).To(Equal(pw))
+							Expect(args.ExpiryDays).To(BeEquivalentTo(expiryDays))
+							Expect(outS.String()).Should(HavePrefix("The email address or password are incorrect"))
+						})
+					})
+				})
+				Describe("delete", func() {
+					BeforeEach(func() {
+						args = append(args, "delete", string(ID))
+					})
+					Context("The request succeeds", func() {
+						BeforeEach(func() {
+							config.Profiles["default"].Output = cli.OutputWhole
+							initResponse("Do", 204, "")
+						})
+						It("returns the success code", func() {
+							checkRequest("DELETE", "/users/"+email+"/accessKeys/"+string(ID))
+							Expect(outS.String()).Should(HavePrefix("204"))
+						})
+					})
+					Context("The user isn't permitted to make the call", func() {
+						BeforeEach(func() {
+							config.Profiles["default"].Output = cli.OutputWhole
+							initResponse("Do", 401, "")
+						})
+						It("returns the failure code", func() {
+							checkRequest("DELETE", "/users/"+email+"/accessKeys/"+string(ID))
+							Expect(outS.String()).Should(HavePrefix("401"))
+						})
+					})
+				})
+				Describe("list", func() {
+					BeforeEach(func() {
+						args = append(args, "list")
+					})
+					Context("The request succeeds", func() {
+						BeforeEach(func() {
+							initResponse("Do", 200, repJ)
+						})
+						It("returns the success code", func() {
+							checkRequest("GET", "/users/"+email+"/accessKeys")
+							Expect(outS.String()).Should(MatchJSON(repJ))
+						})
+					})
+					Context("The user isn't permitted to make the call", func() {
+						BeforeEach(func() {
+							config.Profiles["default"].Output = cli.OutputWhole
+							initResponse("Do", 401, "")
+						})
+						It("returns the failure code", func() {
+							checkRequest("GET", "/users/"+email+"/accessKeys")
+							Expect(outS.String()).Should(HavePrefix("401"))
+						})
+					})
 				})
 			})
 		})
@@ -167,24 +291,24 @@ var _ = Describe("els_cliTest Suite", func() {
 				Context("JSON is piped to the command-line", func() {
 					BeforeEach(func() {
 						pipe.Data = reqJ
-						initResponse("Do", 200)
+						initResponse("Do", 200, repJ)
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("PUT", "/vendors/"+vendorID)
-						checkSentContent()
-						checkOutputContent()
+						checkSentContent(reqJ)
+						checkOutputContent(repJ)
 					})
 				})
 			})
 			Describe("get", func() {
 				BeforeEach(func() {
 					args = append(args, "get")
-					initResponse("Do", 200)
+					initResponse("Do", 200, repJ)
 				})
 
 				It("Receives a result from the API", func() {
 					checkRequest("GET", "/vendors/"+vendorID)
-					checkOutputContent()
+					checkOutputContent(repJ)
 				})
 			})
 			Describe("rulesets", func() {
@@ -195,31 +319,21 @@ var _ = Describe("els_cliTest Suite", func() {
 				Describe("put", func() {
 					BeforeEach(func() {
 						args = append(args, rulesetID, "put")
-						initResponse("Do", 200)
+						initResponse("Do", 200, repJ)
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("PUT", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID)
-						checkOutputContent()
+						checkOutputContent(repJ)
 					})
 				})
 				Describe("activate", func() {
 					BeforeEach(func() {
 						args = append(args, rulesetID, "activate")
-						initResponse("Do", 204)
+						initResponse("Do", 204, "")
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("PATCH", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID+"/activate")
-						checkOutputContent()
-					})
-				})
-				XDescribe("get all rulesets", func() {
-					BeforeEach(func() {
-						args = append(args, "get")
-						initResponse("Do", 200)
-					})
-					It("Receives a result from the API", func() {
-						checkRequest("PUT", "/vendors/"+vendorID+"/paygRuleSets")
-						checkOutputContent()
+						checkOutputContent("")
 					})
 				})
 			})

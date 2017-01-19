@@ -49,7 +49,7 @@ func readConfig() (*Config, string) {
 	return c, cFile
 }
 
-func main() {
+func mainReturnWithCode() int {
 	c, cFile := readConfig()
 	ca := cli.App("els-cli", "Make API calls to Elastic Licensing")
 	tp := datetime.NewNowTimeProvider()
@@ -60,5 +60,13 @@ func main() {
 
 	ELSCLI := NewELSCLI(ca, c, cFile, tp, fs, a, p, pw, os.Stdout, os.Stderr)
 
-	ELSCLI.Run(os.Args)
+	if fatalErr := ELSCLI.Run(os.Args); fatalErr != nil {
+		return -1
+	}
+
+	return 0
+}
+
+func main() {
+	os.Exit(mainReturnWithCode())
 }
