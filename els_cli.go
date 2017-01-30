@@ -223,15 +223,29 @@ func (e *ELSCLI) writeResponse(rep *http.Response) error {
 }
 
 // putVendor updates or creates a vendor.
-func (e *ELSCLI) putVendor(vendorId string, inputFilename string) {
-	if err := e.makeCall("PUT", "/vendors/"+vendorId, inputFilename); err != nil {
+func (e *ELSCLI) putVendor(vendorID string, inputFilename string) {
+	if err := e.makeCall("PUT", "/vendors/"+vendorID, inputFilename); err != nil {
 		e.fatalError(err)
 	}
 }
 
 // getVendor retrieves the details of the given vendor.
-func (e *ELSCLI) getVendor(vendorId string) {
-	if err := e.get("/vendors/" + vendorId); err != nil {
+func (e *ELSCLI) getVendor(vendorID string) {
+	if err := e.get("/vendors/" + vendorID); err != nil {
+		e.fatalError(err)
+	}
+}
+
+// putCloudProvider updates or creates a cloud provider.
+func (e *ELSCLI) putCloudProvider(cloudProviderID string, inputFilename string) {
+	if err := e.makeCall("PUT", "/partners/"+cloudProviderID, inputFilename); err != nil {
+		e.fatalError(err)
+	}
+}
+
+// getCloudProvider retrieves the details of the given cloud provider.
+func (e *ELSCLI) getCloudProvider(cloudProviderID string) {
+	if err := e.get("/partners/" + cloudProviderID); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -326,23 +340,45 @@ func (e *ELSCLI) listAccessKeys(email string) {
 	}
 }
 
+// cloudProviderCommands defines commands relating to the Cloud Provider
+// ('Partner') API. Note that some of these routes are only accessible to ELS
+// role-holders.
+func cloudProviderCommands(vendorC *cli.Cmd) {
+	vendorC.Spec = "[CLOUDPROVIDERID]"
+	cloudProviderID := vendorC.StringArg("CLOUDPROVIDERID", "", "The ELS id of the cloud provider")
+
+	vendorC.Command("put", "Update or Create a cloud provider", func(c *cli.Cmd) {
+		c.Spec = "[SRC]"
+		content := c.StringArg("SRC", "", "The file containing the JSON defining the cloud provider")
+		c.Action = func() {
+			gApp.putCloudProvider(*cloudProviderID, *content)
+		}
+	})
+
+	vendorC.Command("get", "Get details about a cloud provider", func(c *cli.Cmd) {
+		c.Action = func() {
+			gApp.getCloudProvider(*cloudProviderID)
+		}
+	})
+}
+
 // vendorCommands defines commands relating to the Vendor API. Note that some
 // of these routes are only accessible to ELS role-holders.
 func vendorCommands(vendorC *cli.Cmd) {
 	vendorC.Spec = "[VENDORID]"
-	vendorId := vendorC.StringArg("VENDORID", "", "The ELS id of the vendor")
+	vendorID := vendorC.StringArg("VENDORID", "", "The ELS id of the vendor")
 
 	vendorC.Command("put", "Update or Create a vendor", func(c *cli.Cmd) {
 		c.Spec = "[SRC]"
 		content := c.StringArg("SRC", "", "The file containing the JSON defining the vendor")
 		c.Action = func() {
-			gApp.putVendor(*vendorId, *content)
+			gApp.putVendor(*vendorID, *content)
 		}
 	})
 
 	vendorC.Command("get", "Get details about a vendor", func(c *cli.Cmd) {
 		c.Action = func() {
-			gApp.getVendor(*vendorId)
+			gApp.getVendor(*vendorID)
 		}
 	})
 
@@ -353,19 +389,19 @@ func vendorCommands(vendorC *cli.Cmd) {
 			c.Spec = "[SRC]"
 			content := c.StringArg("SRC", "", "The file containing the JSON defining the ruleset")
 			c.Action = func() {
-				gApp.putRuleset(*vendorId, *rulesetID, *content)
+				gApp.putRuleset(*vendorID, *rulesetID, *content)
 			}
 		})
 
 		rulesetsC.Command("get", "List all the rulesets", func(c *cli.Cmd) {
 			c.Action = func() {
-				gApp.getRulesets(*vendorId)
+				gApp.getRulesets(*vendorID)
 			}
 		})
 
 		rulesetsC.Command("activate", "Activate Fuel Charging Ruleset - i.e. it will be the ruleset currently used to define prices", func(c *cli.Cmd) {
 			c.Action = func() {
-				gApp.activateRuleset(*vendorId, *rulesetID)
+				gApp.activateRuleset(*vendorID, *rulesetID)
 			}
 		})
 	})
@@ -469,6 +505,7 @@ func (e *ELSCLI) init() error {
 
 	a.Command("users", "User API", userCommands)
 	a.Command("vendors", "Vendor API", vendorCommands)
+	a.Command("cloud-providers", "Cloud Provider API", cloudProviderCommands)
 
 	return nil
 }

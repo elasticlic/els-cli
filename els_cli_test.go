@@ -31,24 +31,25 @@ func (p *MockPipe) Reader() (io.ReadCloser, error) {
 var _ = Describe("els_cliTest Suite", func() {
 
 	var (
-		fatalErr    error
-		config      cli.Config
-		cFile       = "aConfigFile"
-		jFile       = "t.json"
-		pw          = "password"
-		expiryDays  = 30
-		pwr         = cli.NewStringPassworder(pw, nil)
-		ID          = els.AccessKeyID("anID")
-		SAC         = els.SecretAccessKey("aSAC")
-		email       = "email@example.com"
-		expiry      = time.Now().Add(time.Hour)
-		reqJ        = `{"send":"aValue"}`
-		repJ        = `{"rec":"aValue"}`
-		prof        *cli.Profile
-		vendorID        = "aVendor"
-		rulesetID       = "aRuleset"
-		maxAPITries int = 1
-		accessKey       = els.AccessKey{
+		fatalErr        error
+		config          cli.Config
+		cFile           = "aConfigFile"
+		jFile           = "t.json"
+		pw              = "password"
+		expiryDays      = 30
+		pwr             = cli.NewStringPassworder(pw, nil)
+		ID              = els.AccessKeyID("anID")
+		SAC             = els.SecretAccessKey("aSAC")
+		email           = "email@example.com"
+		expiry          = time.Now().Add(time.Hour)
+		reqJ            = `{"send":"aValue"}`
+		repJ            = `{"rec":"aValue"}`
+		prof            *cli.Profile
+		vendorID            = "aVendor"
+		cloudProviderID     = "aCloudProvider"
+		rulesetID           = "aRuleset"
+		maxAPITries     int = 1
+		accessKey           = els.AccessKey{
 			ID:              ID,
 			SecretAccessKey: SAC,
 			Email:           email,
@@ -335,6 +336,40 @@ var _ = Describe("els_cliTest Suite", func() {
 						checkRequest("PATCH", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID+"/activate")
 						checkOutputContent("")
 					})
+				})
+			})
+		})
+
+		Describe("cloud-provider", func() {
+			BeforeEach(func() {
+				args = append(args, "cloud-providers", cloudProviderID)
+			})
+
+			Describe("put", func() {
+				BeforeEach(func() {
+					args = append(args, "put")
+				})
+				Context("JSON is piped to the command-line", func() {
+					BeforeEach(func() {
+						pipe.Data = reqJ
+						initResponse("Do", 200, repJ)
+					})
+					It("Receives a result from the API", func() {
+						checkRequest("PUT", "/partners/"+cloudProviderID)
+						checkSentContent(reqJ)
+						checkOutputContent(repJ)
+					})
+				})
+			})
+			Describe("get", func() {
+				BeforeEach(func() {
+					args = append(args, "get")
+					initResponse("Do", 200, repJ)
+				})
+
+				It("Receives a result from the API", func() {
+					checkRequest("GET", "/partners/"+cloudProviderID)
+					checkOutputContent(repJ)
 				})
 			})
 		})
