@@ -170,7 +170,7 @@ func (e *ELSCLI) makeCall(httpMethod string, URL string, srcFile string) (err er
 		rep    *http.Response
 	)
 
-	if (httpMethod == "POST") || (httpMethod == "PUT") {
+	if (httpMethod == "POST") || (httpMethod == "PUT") || (httpMethod == "PATCH") {
 		if bodyRC, err = e.getInputData(srcFile); err != nil {
 			return err
 		}
@@ -340,14 +340,28 @@ func (e *ELSCLI) listAccessKeys(email string) {
 	}
 }
 
+// doGetCommand executes a generic GET request.
+func (e *ELSCLI) doGetCommand(URL string) {
+	if err := e.get(URL); err != nil {
+		e.fatalError(err)
+	}
+}
+
+// doCommand executes a generic POST, PUT or PATCH request.
+func (e *ELSCLI) doCommand(method string, URL string, inputFilename string) {
+	if err := e.makeCall(method, URL, inputFilename); err != nil {
+		e.fatalError(err)
+	}
+}
+
 // cloudProviderCommands defines commands relating to the Cloud Provider
 // ('Partner') API. Note that some of these routes are only accessible to ELS
 // role-holders.
-func cloudProviderCommands(vendorC *cli.Cmd) {
-	vendorC.Spec = "[CLOUDPROVIDERID]"
-	cloudProviderID := vendorC.StringArg("CLOUDPROVIDERID", "", "The ELS id of the cloud provider")
+func cloudProviderCommands(cpC *cli.Cmd) {
+	cpC.Spec = "[CLOUDPROVIDERID]"
+	cloudProviderID := cpC.StringArg("CLOUDPROVIDERID", "", "The ELS id of the cloud provider")
 
-	vendorC.Command("put", "Update or Create a cloud provider", func(c *cli.Cmd) {
+	cpC.Command("put", "Update or Create a cloud provider", func(c *cli.Cmd) {
 		c.Spec = "[SRC]"
 		content := c.StringArg("SRC", "", "The file containing the JSON defining the cloud provider")
 		c.Action = func() {
@@ -355,9 +369,47 @@ func cloudProviderCommands(vendorC *cli.Cmd) {
 		}
 	})
 
-	vendorC.Command("get", "Get details about a cloud provider", func(c *cli.Cmd) {
+	cpC.Command("get", "Get details about a cloud provider", func(c *cli.Cmd) {
 		c.Action = func() {
 			gApp.getCloudProvider(*cloudProviderID)
+		}
+	})
+}
+
+// genericCommands defines commands that allow the making of any API call except
+// access key creation. All calls are els-signed (whether they need to be or
+// not).
+func genericCommands(gC *cli.Cmd) {
+
+	gC.Command("GET", "Get a resource", func(c *cli.Cmd) {
+		c.Spec = "URL"
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		c.Action = func() {
+			gApp.doGetCommand(*url)
+		}
+	})
+	gC.Command("PUT", "Update or Create a resource", func(c *cli.Cmd) {
+		c.Spec = "URL [CONTENT]"
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		content := c.StringArg("CONTENT", "", "The file containing the JSON to be sent as the request body")
+		c.Action = func() {
+			gApp.doCommand("PUT", *url, *content)
+		}
+	})
+	gC.Command("POST", "Post a resource", func(c *cli.Cmd) {
+		c.Spec = "URL [CONTENT]"
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		content := c.StringArg("CONTENT", "", "The file containing the JSON to be sent as the request body")
+		c.Action = func() {
+			gApp.doCommand("POST", *url, *content)
+		}
+	})
+	gC.Command("PATCH", "Patch a resource", func(c *cli.Cmd) {
+		c.Spec = "URL [CONTENT]"
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		content := c.StringArg("CONTENT", "", "The file containing the JSON to be sent as the request body")
+		c.Action = func() {
+			gApp.doCommand("PATCH", *url, *content)
 		}
 	})
 }
@@ -365,7 +417,7 @@ func cloudProviderCommands(vendorC *cli.Cmd) {
 // vendorCommands defines commands relating to the Vendor API. Note that some
 // of these routes are only accessible to ELS role-holders.
 func vendorCommands(vendorC *cli.Cmd) {
-	vendorC.Spec = "[VENDORID]"
+	vendorC.Spec = "VENDORID"
 	vendorID := vendorC.StringArg("VENDORID", "", "The ELS id of the vendor")
 
 	vendorC.Command("put", "Update or Create a vendor", func(c *cli.Cmd) {
@@ -506,6 +558,7 @@ func (e *ELSCLI) init() error {
 	a.Command("users", "User API", userCommands)
 	a.Command("vendors", "Vendor API", vendorCommands)
 	a.Command("cloud-providers", "Cloud Provider API", cloudProviderCommands)
+	a.Command("do", "Make any call to the API", genericCommands)
 
 	return nil
 }

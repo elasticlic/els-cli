@@ -48,6 +48,7 @@ var _ = Describe("els_cliTest Suite", func() {
 		vendorID            = "aVendor"
 		cloudProviderID     = "aCloudProvider"
 		rulesetID           = "aRuleset"
+		URL                 = "/a/path/and?querystring"
 		maxAPITries     int = 1
 		accessKey           = els.AccessKey{
 			ID:              ID,
@@ -88,8 +89,15 @@ var _ = Describe("els_cliTest Suite", func() {
 			}
 
 			checkRequest = func(httpMethod string, URL string) {
-				Expect(httpMethod).To(Equal(ac.GetCall(0).ACArgs.Req.Method))
-				Expect(URL).To(Equal(ac.GetCall(0).ACArgs.Req.URL.Path))
+				r := ac.GetCall(0).ACArgs.Req
+				Expect(httpMethod).To(Equal(r.Method))
+
+				u := r.URL
+				if u.RawQuery != "" {
+					Expect(URL).To(Equal(u.Path + "?" + u.RawQuery))
+				} else {
+					Expect(URL).To(Equal(u.Path))
+				}
 			}
 
 			// initAPIResponse sets a simple expectation on an APICaller method
@@ -370,6 +378,71 @@ var _ = Describe("els_cliTest Suite", func() {
 				It("Receives a result from the API", func() {
 					checkRequest("GET", "/partners/"+cloudProviderID)
 					checkOutputContent(repJ)
+				})
+			})
+		})
+		Describe("do", func() {
+			BeforeEach(func() {
+				args = append(args, "do")
+			})
+
+			Describe("GET", func() {
+				BeforeEach(func() {
+					args = append(args, "GET", URL)
+					initResponse("Do", 200, repJ)
+				})
+
+				It("Receives a result from the API", func() {
+					checkRequest("GET", URL)
+					checkOutputContent(repJ)
+				})
+			})
+			Describe("POST", func() {
+				BeforeEach(func() {
+					args = append(args, "POST", URL)
+				})
+				Context("JSON is piped to the command-line", func() {
+					BeforeEach(func() {
+						pipe.Data = reqJ
+						initResponse("Do", 200, repJ)
+					})
+					It("Receives a result from the API", func() {
+						checkRequest("POST", URL)
+						checkSentContent(reqJ)
+						checkOutputContent(repJ)
+					})
+				})
+			})
+			Describe("PUT", func() {
+				BeforeEach(func() {
+					args = append(args, "PUT", URL)
+				})
+				Context("JSON is piped to the command-line", func() {
+					BeforeEach(func() {
+						pipe.Data = reqJ
+						initResponse("Do", 200, repJ)
+					})
+					It("Receives a result from the API", func() {
+						checkRequest("PUT", URL)
+						checkSentContent(reqJ)
+						checkOutputContent(repJ)
+					})
+				})
+			})
+			Describe("PATCH", func() {
+				BeforeEach(func() {
+					args = append(args, "PATCH", URL)
+				})
+				Context("JSON is piped to the command-line", func() {
+					BeforeEach(func() {
+						pipe.Data = reqJ
+						initResponse("Do", 200, repJ)
+					})
+					It("Receives a result from the API", func() {
+						checkRequest("PATCH", URL)
+						checkSentContent(reqJ)
+						checkOutputContent(repJ)
+					})
 				})
 			})
 		})
