@@ -28,7 +28,7 @@ import (
 var gApp *ELSCLI
 
 // Version identifies the version of the CLI.
-const Version = "0.0.2"
+const Version = "0.0.3"
 
 const (
 	// APIRetryInterval governs the initial throttling of an API retry
