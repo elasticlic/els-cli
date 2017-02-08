@@ -436,12 +436,11 @@ var _ = Describe("els_cliTest Suite", func() {
 				Context("JSON is piped to the command-line", func() {
 					BeforeEach(func() {
 						pipe.Data = reqJ
-						initResponse("Do", 200, repJ)
+						initResponse("Do", 204, repJ)
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("PATCH", URL)
 						checkSentContent(reqJ)
-						checkOutputContent(repJ)
 					})
 				})
 			})
