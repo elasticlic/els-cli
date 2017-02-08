@@ -28,7 +28,7 @@ import (
 var gApp *ELSCLI
 
 // Version identifies the version of the CLI.
-const Version = "0.0.3"
+const Version = "0.0.4"
 
 const (
 	// APIRetryInterval governs the initial throttling of an API retry
@@ -146,7 +146,6 @@ func (e *ELSCLI) doRequest(req *http.Request) (rep *http.Response, err error) {
 // call - either from srcFile or, if not defined, from data piped into the
 // command.
 func (e *ELSCLI) getInputData(srcFile string) (io.ReadCloser, error) {
-
 	if srcFile == "" {
 		return e.pipe.Reader()
 	}
@@ -164,15 +163,20 @@ func (e *ELSCLI) get(URL string) error {
 // given file, or, if no file is given, data piped to the command. The URL is
 // relative to the API root - e.g. "/vendors".
 func (e *ELSCLI) makeCall(httpMethod string, URL string, srcFile string) (err error) {
-
 	var (
 		bodyRC io.ReadCloser
 		rep    *http.Response
 	)
-
-	if (httpMethod == "POST") || (httpMethod == "PUT") || (httpMethod == "PATCH") {
+	if (httpMethod == "POST") || (httpMethod == "PUT") {
 		if bodyRC, err = e.getInputData(srcFile); err != nil {
 			return err
+		}
+	}
+
+	if httpMethod == "PATCH" {
+		// Some ELS PATCH calls can validly have an empty body
+		if bodyRC, err = e.getInputData(srcFile); err != nil {
+			bodyRC = nil
 		}
 	}
 
@@ -196,7 +200,7 @@ func (e *ELSCLI) writeResponse(rep *http.Response) error {
 		defer rep.Body.Close()
 	}
 
-	getBody := (e.profile.Output != OutputStatusCodeOnly) && (rep.Body != nil)
+	getBody := (e.profile.Output != OutputStatusCodeOnly) && (rep.Body != nil) && (rep.StatusCode != 204)
 
 	var prettyJSON bytes.Buffer
 
