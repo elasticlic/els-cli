@@ -346,14 +346,14 @@ func (e *ELSCLI) listAccessKeys(email string) {
 
 // doGetCommand executes a generic GET request.
 func (e *ELSCLI) doGetCommand(URL string) {
-	if err := e.get(URL); err != nil {
+	if err := e.get("/" + URL); err != nil {
 		e.fatalError(err)
 	}
 }
 
 // doCommand executes a generic POST, PUT or PATCH request.
 func (e *ELSCLI) doCommand(method string, URL string, inputFilename string) {
-	if err := e.makeCall(method, URL, inputFilename); err != nil {
+	if err := e.makeCall(method, "/"+URL, inputFilename); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -387,14 +387,14 @@ func genericCommands(gC *cli.Cmd) {
 
 	gC.Command("GET", "Get a resource", func(c *cli.Cmd) {
 		c.Spec = "URL"
-		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. 'vendors/...'")
 		c.Action = func() {
 			gApp.doGetCommand(*url)
 		}
 	})
 	gC.Command("PUT", "Update or Create a resource", func(c *cli.Cmd) {
 		c.Spec = "URL [CONTENT]"
-		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. 'vendors/...'")
 		content := c.StringArg("CONTENT", "", "The file containing the JSON to be sent as the request body")
 		c.Action = func() {
 			gApp.doCommand("PUT", *url, *content)
@@ -402,7 +402,7 @@ func genericCommands(gC *cli.Cmd) {
 	})
 	gC.Command("POST", "Post a resource", func(c *cli.Cmd) {
 		c.Spec = "URL [CONTENT]"
-		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. 'vendors/...'")
 		content := c.StringArg("CONTENT", "", "The file containing the JSON to be sent as the request body")
 		c.Action = func() {
 			gApp.doCommand("POST", *url, *content)
@@ -410,7 +410,7 @@ func genericCommands(gC *cli.Cmd) {
 	})
 	gC.Command("PATCH", "Patch a resource", func(c *cli.Cmd) {
 		c.Spec = "URL [CONTENT]"
-		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. '/vendors/...'")
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. 'vendors/...'")
 		content := c.StringArg("CONTENT", "", "The file containing the JSON to be sent as the request body")
 		c.Action = func() {
 			gApp.doCommand("PATCH", *url, *content)

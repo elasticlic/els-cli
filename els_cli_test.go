@@ -385,10 +385,11 @@ var _ = Describe("els_cliTest Suite", func() {
 			BeforeEach(func() {
 				args = append(args, "do")
 			})
-
+			// Note in the tests below, we submit the URL WITHOUT the leading
+			// slash... We expect that to be added automatically...
 			Describe("GET", func() {
 				BeforeEach(func() {
-					args = append(args, "GET", URL)
+					args = append(args, "GET", URL[1:])
 					initResponse("Do", 200, repJ)
 				})
 
@@ -399,7 +400,7 @@ var _ = Describe("els_cliTest Suite", func() {
 			})
 			Describe("POST", func() {
 				BeforeEach(func() {
-					args = append(args, "POST", URL)
+					args = append(args, "POST", URL[1:])
 				})
 				Context("JSON is piped to the command-line", func() {
 					BeforeEach(func() {
@@ -415,7 +416,7 @@ var _ = Describe("els_cliTest Suite", func() {
 			})
 			Describe("PUT", func() {
 				BeforeEach(func() {
-					args = append(args, "PUT", URL)
+					args = append(args, "PUT", URL[1:])
 				})
 				Context("JSON is piped to the command-line", func() {
 					BeforeEach(func() {
@@ -431,7 +432,7 @@ var _ = Describe("els_cliTest Suite", func() {
 			})
 			Describe("PATCH", func() {
 				BeforeEach(func() {
-					args = append(args, "PATCH", URL)
+					args = append(args, "PATCH", URL[1:])
 				})
 				Context("JSON is piped to the command-line", func() {
 					BeforeEach(func() {
