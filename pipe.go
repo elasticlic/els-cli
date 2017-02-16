@@ -27,7 +27,7 @@ func (p *CLIPipe) Reader() (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	if (info.Mode()&os.ModeCharDevice) != 0 || info.Size() == 0 {
+	if (info.Mode() & os.ModeCharDevice) != 0 {
 		// no data from a pipe - ignore
 		return nil, ErrNoContent
 	}
