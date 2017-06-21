@@ -194,18 +194,14 @@ or via a pipe...
 
 (Site maintainers only)
 
-To make a new release, do the following:
+We use [git flow](https://danielkummer.github.io/git-flow-cheatsheet/).
+
+When preparing a new release, do the following:
 
 1. Update the version in els-cli.go
-
-2. Commit changes
-
-3. Tag the commit
-
-        git tag <version>
-        git push origin --tags
-
-4. Run `build.sh <version>`
+2. Update the releases.md with details of the changes
+2. Run `build.sh <version>`
 
 5. Upload the artifacts from `_releases/<version>` to the
 [github els-cli releases page](https://github.com/elasticlic/els-cli/releases).
+

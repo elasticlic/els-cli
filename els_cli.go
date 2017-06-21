@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/elasticlic/els-api-sdk-go/els"
 	"github.com/elasticlic/go-utils/datetime"
 	"github.com/jawher/mow.cli"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
@@ -28,7 +28,7 @@ import (
 var gApp *ELSCLI
 
 // Version identifies the version of the CLI.
-const Version = "0.0.4"
+const Version = "0.0.3"
 
 const (
 	// APIRetryInterval governs the initial throttling of an API retry
