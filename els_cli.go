@@ -115,7 +115,8 @@ func NewELSCLI(
 // fatalError terminates the cli cleanly in the event of a usage error which
 // cannot be automatically captured by the cli framework.
 func (e *ELSCLI) fatalError(err error) {
-	log.WithFields(log.Fields{"Time": e.tp.Now(), "Error": err}).Debug("Fatal Error")
+	e.fatalErr = err
+	log.WithFields(log.Fields{"Time": e.tp.Now(), "error": err}).Debug("Fatal Error")
 	fmt.Fprintln(e.errorStream, err.Error())
 }
 
