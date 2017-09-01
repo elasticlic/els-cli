@@ -200,8 +200,7 @@ When preparing a new release, do the following:
 
 1. Update the version in els-cli.go
 2. Update the releases.md with details of the changes
-2. Run `build.sh <version>`
-
-5. Upload the artifacts from `_releases/<version>` to the
+3. Run `build.sh <version>`
+4. Upload the artifacts from `_releases/<version>` to the
 [github els-cli releases page](https://github.com/elasticlic/els-cli/releases).
 
