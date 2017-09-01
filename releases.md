@@ -1,5 +1,12 @@
 # Releases
 
+## 0.0.4
+
+*2017-09-01*
+
+Now statically compiled
+
+
 ## 0.0.3
 
 * Updated to use sirupsen/logrus 1.0.0
