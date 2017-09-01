@@ -20,7 +20,11 @@ function build {
     GOARCH=$2
 
     echo Building "$GOOS" "$GOARCH"
-    GOOS=$1 GOARCH=$2 go build
+
+    # Note: CGO_ENABLED=0 tells the go toolchain to try to avoid pulling in
+    # dependencies which would require the executable to be dynamic (i.e.
+    # relying on dynamic system libraries). In this case,
+    GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build
 
     if [ $? -ne 0 ]; then
         echo "Build failed ${GOOS}, ${GOARCH}"
