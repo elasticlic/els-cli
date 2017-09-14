@@ -131,7 +131,6 @@ var _ = Describe("els_cliTest Suite", func() {
 		})
 
 		JustBeforeEach(func() {
-
 			fatalErr = sut.Run(args)
 		})
 
@@ -320,6 +319,16 @@ var _ = Describe("els_cliTest Suite", func() {
 					checkOutputContent(repJ)
 				})
 			})
+			Describe("list-rulesets", func() {
+				BeforeEach(func() {
+					args = append(args, "list-rulesets")
+					initResponse("Do", 200, repJ)
+				})
+				It("Receives a result from the API", func() {
+					checkRequest("GET", "/vendors/"+vendorID+"/paygRuleSets")
+					checkOutputContent(repJ)
+				})
+			})
 			Describe("rulesets", func() {
 				BeforeEach(func() {
 					args = append(args, "rulesets")
@@ -332,6 +341,16 @@ var _ = Describe("els_cliTest Suite", func() {
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("PUT", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID)
+						checkOutputContent(repJ)
+					})
+				})
+				Describe("get", func() {
+					BeforeEach(func() {
+						args = append(args, rulesetID, "get")
+						initResponse("Do", 200, repJ)
+					})
+					It("Receives a result from the API", func() {
+						checkRequest("GET", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID)
 						checkOutputContent(repJ)
 					})
 				})
