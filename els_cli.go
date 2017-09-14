@@ -28,7 +28,7 @@ import (
 var gApp *ELSCLI
 
 // Version identifies the version of the CLI.
-const Version = "0.0.3"
+const Version = "0.0.5"
 
 const (
 	// APIRetryInterval governs the initial throttling of an API retry
@@ -38,7 +38,7 @@ const (
 var (
 	ErrNoContent      = errors.New("No Content Provided - either provide a filename or pipe content to the command")
 	ErrInvalidOutput  = errors.New("Invalid output specified")
-	ErrApiUnreachable = errors.New("The ELS API could not be reached. Are you connected to the internet?")
+	ErrApiUnreachable = errors.New("The ELS API could not be reached. Are you connected to the internet? Have you used the correct profile?")
 )
 
 // ELSCLI represents our App.
@@ -257,9 +257,9 @@ func (e *ELSCLI) getCloudProvider(cloudProviderID string) {
 
 // putRuleset defines or updates a ruleset with the given id.
 func (e *ELSCLI) putRuleset(vendorId string, rulesetID string, inputFilename string) {
-	URL := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID
+	url := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID
 
-	if err := e.makeCall("PUT", URL, inputFilename); err != nil {
+	if err := e.makeCall("PUT", url, inputFilename); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -267,17 +267,28 @@ func (e *ELSCLI) putRuleset(vendorId string, rulesetID string, inputFilename str
 // activateRuleset makes the given ruleset now the one which is used to generate
 // live pricing for the vendor's products (when using Fuel).
 func (e *ELSCLI) activateRuleset(vendorId string, rulesetID string) {
-	URL := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID + "/activate"
+	url := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID + "/activate"
 
-	if err := e.makeCall("PATCH", URL, ""); err != nil {
+	if err := e.makeCall("PATCH", url, ""); err != nil {
 		e.fatalError(err)
 	}
 }
 
-// getRulesets lists all the rulesets.
-func (e *ELSCLI) getRulesets(vendorId string) {
+// getRuleset gets a ruleset.
+func (e *ELSCLI) getRuleset(vendorId string, rulesetID string) {
 
-	if err := e.get("/vendors/" + vendorId + "/paygRuleSets/"); err != nil {
+	url := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID
+
+	if err := e.get(url); err != nil {
+		e.fatalError(err)
+	}
+}
+
+// listRulesets lists all the rulesets.
+func (e *ELSCLI) listRulesets(vendorId string) {
+	url := "/vendors/" + vendorId + "/paygRuleSets"
+
+	if err := e.get(url); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -439,10 +450,16 @@ func vendorCommands(vendorC *cli.Cmd) {
 		}
 	})
 
-	vendorC.Command("rulesets", "Manage Fuel Charging Rulesets - used to generate pricing for Fuel.", func(rulesetsC *cli.Cmd) {
+	vendorC.Command("list-rulesets", "List all the Pricing Rulesets", func(c *cli.Cmd) {
+
+		c.Action = func() {
+			gApp.listRulesets(*vendorID)
+		}
+	})
+	vendorC.Command("rulesets", "Manage Pricing Rulesets - used to generate pricing for Fuel.", func(rulesetsC *cli.Cmd) {
 		rulesetID := rulesetsC.StringArg("RULESETID", "", "The ID of the ruleset")
 
-		rulesetsC.Command("put", "Create or update a Fuel Charging Ruleset - note you cannot update an activated (live) ruleset.", func(c *cli.Cmd) {
+		rulesetsC.Command("put", "Create or update a Pricing Ruleset - note you cannot update an activated (live) Ruleset.", func(c *cli.Cmd) {
 			c.Spec = "[SRC]"
 			content := c.StringArg("SRC", "", "The file containing the JSON defining the ruleset")
 			c.Action = func() {
@@ -450,13 +467,13 @@ func vendorCommands(vendorC *cli.Cmd) {
 			}
 		})
 
-		rulesetsC.Command("get", "List all the rulesets", func(c *cli.Cmd) {
+		rulesetsC.Command("get", "Get a specific Pricing Ruleset", func(c *cli.Cmd) {
 			c.Action = func() {
-				gApp.getRulesets(*vendorID)
+				gApp.getRuleset(*vendorID, *rulesetID)
 			}
 		})
 
-		rulesetsC.Command("activate", "Activate Fuel Charging Ruleset - i.e. it will be the ruleset currently used to define prices", func(c *cli.Cmd) {
+		rulesetsC.Command("activate", "Activate a Pricing Ruleset - i.e. it will be used to generate Fuel Rates", func(c *cli.Cmd) {
 			c.Action = func() {
 				gApp.activateRuleset(*vendorID, *rulesetID)
 			}
