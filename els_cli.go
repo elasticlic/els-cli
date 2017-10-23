@@ -160,6 +160,12 @@ func (e *ELSCLI) get(URL string) error {
 	return e.makeCall("GET", URL, "")
 }
 
+// delete makes a DELETE call with the given URL, where URL is relative to the API root
+// e.g. "/vendors".
+func (e *ELSCLI) delete(URL string) error {
+	return e.makeCall("DELETE", URL, "")
+}
+
 // makeCall executes an API call whose body will be set to the contents of the
 // given file, or, if no file is given, data piped to the command. The URL is
 // relative to the API root - e.g. "/vendors".
@@ -363,6 +369,13 @@ func (e *ELSCLI) doGetCommand(URL string) {
 	}
 }
 
+// doDeleteCommand executes a generic DELETE request.
+func (e *ELSCLI) doDeleteCommand(URL string) {
+	if err := e.delete("/" + URL); err != nil {
+		e.fatalError(err)
+	}
+}
+
 // doCommand executes a generic POST, PUT or PATCH request.
 func (e *ELSCLI) doCommand(method string, URL string, inputFilename string) {
 	if err := e.makeCall(method, "/"+URL, inputFilename); err != nil {
@@ -426,6 +439,13 @@ func genericCommands(gC *cli.Cmd) {
 		content := c.StringArg("CONTENT", "", "The file containing the JSON to be sent as the request body")
 		c.Action = func() {
 			gApp.doCommand("PATCH", *url, *content)
+		}
+	})
+	gC.Command("DELETE", "Delete a resource", func(c *cli.Cmd) {
+		c.Spec = "URL"
+		url := c.StringArg("URL", "", "The path and query string of the API call without the domain or version prefix - e.g. 'vendors/...'")
+		c.Action = func() {
+			gApp.doDeleteCommand(*url)
 		}
 	})
 }

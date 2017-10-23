@@ -464,6 +464,16 @@ var _ = Describe("els_cliTest Suite", func() {
 					})
 				})
 			})
+			Describe("DELETE", func() {
+				BeforeEach(func() {
+					args = append(args, "DELETE", URL[1:])
+					initResponse("Do", 200, repJ)
+				})
+
+				It("Issues the expected request", func() {
+					checkRequest("DELETE", URL)
+				})
+			})
 		})
 	})
 })
