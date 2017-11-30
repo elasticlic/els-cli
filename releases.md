@@ -1,5 +1,11 @@
 # Releases
 
+## 0.0.7
+
+*2017-11-30*
+
+* Changed build to omit symbol table rather than applying post-build strip command
+
 ## 0.0.6
 
 *2017-10-23*

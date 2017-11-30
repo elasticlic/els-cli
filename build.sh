@@ -23,8 +23,11 @@ function build {
 
     # Note: CGO_ENABLED=0 tells the go toolchain to try to avoid pulling in
     # dependencies which would require the executable to be dynamic (i.e.
-    # relying on dynamic system libraries). In this case,
-    GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build
+    # relying on dynamic system libraries).
+    #
+    # ldflags '-s' omits the symbol table. (Stripping the executable is not
+    # recommended).
+    GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build -ldflags '-s'
 
     if [ $? -ne 0 ]; then
         echo "Build failed ${GOOS}, ${GOARCH}"
@@ -35,9 +38,6 @@ function build {
     DST_DIR="_releases/${VERSION}"
     DST="$DST_DIR"/els-cli-v"$VERSION"-"$GOOS"-"$GOARCH"$(extension)
 
-    if [ "$GOOS" != darwin ]; then
-        strip "$OUTPUT"
-    fi
     mkdir -p "$DST_DIR"
     mv -f "$OUTPUT" "$DST"
 }
