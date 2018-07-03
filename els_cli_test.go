@@ -79,9 +79,18 @@ var _ = Describe("els_cliTest Suite", func() {
 				Expect(sentJ).To(MatchJSON(json))
 			}
 
-			// checkOutputContent checks if the els-cli emitted the JSON response
+			// checkOutputString checks if the output content is the string
+			// given.
+			checkOutputString = func(str string) {
+				Expect(errS.String()).To(BeZero())
+				if str != "" {
+					Expect(outS.String()).To(Equal(str))
+				}
+			}
+
+			// checkOutputJSON checks if the els-cli emitted the JSON response
 			// body received from the ELS.
-			checkOutputContent = func(json string) {
+			checkOutputJSON = func(json string) {
 				Expect(errS.String()).To(BeZero())
 				if json != "" {
 					Expect(outS.String()).To(MatchJSON(json))
@@ -148,7 +157,7 @@ var _ = Describe("els_cliTest Suite", func() {
 				})
 				It("Receives a result from the API", func() {
 					checkSentContent(reqJ)
-					checkOutputContent(repJ)
+					checkOutputJSON(repJ)
 				})
 			})
 			Context("A file containing JSON is specified on the commandline", func() {
@@ -166,7 +175,7 @@ var _ = Describe("els_cliTest Suite", func() {
 					})
 					It("Sends the correct content and outputs the  API response body", func() {
 						checkSentContent(reqJ)
-						checkOutputContent(repJ)
+						checkOutputJSON(repJ)
 					})
 				})
 
@@ -304,7 +313,7 @@ var _ = Describe("els_cliTest Suite", func() {
 					It("Receives a result from the API", func() {
 						checkRequest("PUT", "/vendors/"+vendorID)
 						checkSentContent(reqJ)
-						checkOutputContent(repJ)
+						checkOutputJSON(repJ)
 					})
 				})
 			})
@@ -316,7 +325,7 @@ var _ = Describe("els_cliTest Suite", func() {
 
 				It("Receives a result from the API", func() {
 					checkRequest("GET", "/vendors/"+vendorID)
-					checkOutputContent(repJ)
+					checkOutputJSON(repJ)
 				})
 			})
 			Describe("list-rulesets", func() {
@@ -326,7 +335,7 @@ var _ = Describe("els_cliTest Suite", func() {
 				})
 				It("Receives a result from the API", func() {
 					checkRequest("GET", "/vendors/"+vendorID+"/paygRuleSets")
-					checkOutputContent(repJ)
+					checkOutputJSON(repJ)
 				})
 			})
 			Describe("rulesets", func() {
@@ -341,7 +350,7 @@ var _ = Describe("els_cliTest Suite", func() {
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("PUT", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID)
-						checkOutputContent(repJ)
+						checkOutputJSON(repJ)
 					})
 				})
 				Describe("get", func() {
@@ -351,7 +360,7 @@ var _ = Describe("els_cliTest Suite", func() {
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("GET", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID)
-						checkOutputContent(repJ)
+						checkOutputJSON(repJ)
 					})
 				})
 				Describe("activate", func() {
@@ -361,8 +370,26 @@ var _ = Describe("els_cliTest Suite", func() {
 					})
 					It("Receives a result from the API", func() {
 						checkRequest("PATCH", "/vendors/"+vendorID+"/paygRuleSets/"+rulesetID+"/activate")
-						checkOutputContent("")
+						checkOutputJSON("")
 					})
+				})
+			})
+			Describe("get-eula-license-infringements", func() {
+				BeforeEach(func() {
+					args = append(args, "get-eula-license-infringements")
+				})
+				Context("The Year and Month for the report is given", func() {
+					BeforeEach(func() {
+						args = append(args, "2018", "6")
+					})
+					Context("There are multiple pages of infringements", func() {
+						BeforeEach(func() {
+
+						})
+					})
+				})
+				Context("There are no infringements", func() {
+
 				})
 			})
 		})
@@ -384,7 +411,7 @@ var _ = Describe("els_cliTest Suite", func() {
 					It("Receives a result from the API", func() {
 						checkRequest("PUT", "/partners/"+cloudProviderID)
 						checkSentContent(reqJ)
-						checkOutputContent(repJ)
+						checkOutputJSON(repJ)
 					})
 				})
 			})
@@ -396,7 +423,7 @@ var _ = Describe("els_cliTest Suite", func() {
 
 				It("Receives a result from the API", func() {
 					checkRequest("GET", "/partners/"+cloudProviderID)
-					checkOutputContent(repJ)
+					checkOutputJSON(repJ)
 				})
 			})
 		})
@@ -414,7 +441,7 @@ var _ = Describe("els_cliTest Suite", func() {
 
 				It("Receives a result from the API", func() {
 					checkRequest("GET", URL)
-					checkOutputContent(repJ)
+					checkOutputJSON(repJ)
 				})
 			})
 			Describe("POST", func() {
@@ -429,7 +456,7 @@ var _ = Describe("els_cliTest Suite", func() {
 					It("Receives a result from the API", func() {
 						checkRequest("POST", URL)
 						checkSentContent(reqJ)
-						checkOutputContent(repJ)
+						checkOutputJSON(repJ)
 					})
 				})
 			})
@@ -445,7 +472,7 @@ var _ = Describe("els_cliTest Suite", func() {
 					It("Receives a result from the API", func() {
 						checkRequest("PUT", URL)
 						checkSentContent(reqJ)
-						checkOutputContent(repJ)
+						checkOutputJSON(repJ)
 					})
 				})
 			})
