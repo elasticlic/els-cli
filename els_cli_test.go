@@ -509,7 +509,7 @@ var _ = Describe("els_cliTest Suite", func() {
 								},
 							})
 						})
-						FIt("reports an unexpected error", func() {
+						It("reports an unexpected error", func() {
 							Expect(fatalErr).To(Equal(cli.ErrUnexpectedResponse))
 						})
 					})
