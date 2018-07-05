@@ -1,5 +1,12 @@
 # Releases
 
+## 0.1.0
+
+*2018-07-05*
+
+* Added vendor utility get-eula-license-infringements - gets a CSV of all
+customer License EULA infringements in a given month.
+
 ## 0.0.7
 
 *2017-11-30*
