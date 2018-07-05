@@ -38,9 +38,10 @@ const (
 
 // Errors presented to user.
 var (
-	ErrNoContent      = errors.New("No Content Provided - either provide a filename or pipe content to the command")
-	ErrInvalidOutput  = errors.New("Invalid output specified")
-	ErrAPIUnreachable = errors.New("The ELS API could not be reached. Are you connected to the internet? Have you used the correct profile?")
+	ErrNoContent          = errors.New("No Content Provided - either provide a filename or pipe content to the command")
+	ErrInvalidOutput      = errors.New("Invalid output specified")
+	ErrAPIUnreachable     = errors.New("The ELS API could not be reached. Are you connected to the internet? Have you used the correct profile?")
+	ErrUnexpectedResponse = errors.New("Unexpected Response")
 )
 
 // ELSCLI represents our App.
@@ -376,6 +377,13 @@ func (e *ELSCLI) listAccessKeys(email string) {
 	}
 }
 
+// CustomerEULAInfringementsResponse represents a page of results returned from
+// a request for customer infringements.
+type CustomerEULAInfringementsResponse struct {
+	Cursor                string                      `json:"cursor"`
+	CustomerInfringements []CustomerEULAInfringements `json:"customerInfringements"`
+}
+
 // EULAInfringement represents a specific EULA License infringement.
 type EULAInfringement struct {
 	EULAPeriod   string `json:"eulaPeriod"`
@@ -387,7 +395,6 @@ type EULAInfringement struct {
 	LicenseSetID string `json:"licenceSetId"`
 	LicenseIndex int    `json:"licenceIndex"`
 	NumUsers     int    `json:"numUsers"`
-	Cursor       string `json:"cursor"`
 }
 
 // CustomerEULAInfringements represents the infringements relating to a specific
@@ -420,27 +427,31 @@ func (e *ELSCLI) doGetEULALicenseInfringements(vendorID string, year, month int)
 	cursor := ""
 
 	for {
-		ci, err := e.getInfringementPage(path, cursor)
+		cir, err := e.getInfringementPage(path, cursor)
 
 		if err != nil {
 			return err
 		}
 
-		for _, i := range ci.Infringements {
+		cursor = cir.Cursor
 
-			records = append(data, []string{
-				ci.ELSCustomerID,
-				ci.VendorCustomerID,
-				i.EULAPeriod,
-				strconv.Itoa(i.Year),
-				strconv.Itoa(i.Month),
-				i.EULAPolicyID,
-				i.FeatureID,
-				i.LicenseSetID,
-				strconv.Itoa(i.LicenseIndex),
-			})
+		for _, ci := range cir.CustomerInfringements {
+			for _, i := range ci.Infringements {
+
+				records = append(records, []string{
+					ci.ELSCustomerID,
+					ci.VendorCustomerID,
+					i.EULAPeriod,
+					strconv.Itoa(i.Year),
+					strconv.Itoa(i.Month),
+					i.EULAPolicyID,
+					i.FeatureID,
+					i.LicenseSetID,
+					strconv.Itoa(i.LicenseIndex),
+					strconv.Itoa(i.NumUsers),
+				})
+			}
 		}
-		cursor = inf.cursor
 
 		if cursor == "" {
 			break
@@ -454,14 +465,13 @@ func (e *ELSCLI) doGetEULALicenseInfringements(vendorID string, year, month int)
 // getInfringementPage gets a single page of CustomerEULAInfringements results,
 // beginning either at the specified cursor or the start of the result set if
 // the cursor is zero-valued. path defines the rou
-func (e *ELSCLI) getInfringementPage(url, cursor string) (i *CustomerEULAInfringements, err error) {
-	res := CustomerEULAInfringements{}
-	if cursor {
+func (e *ELSCLI) getInfringementPage(url, cursor string) (i *CustomerEULAInfringementsResponse, err error) {
+	res := CustomerEULAInfringementsResponse{}
+	if cursor != "" {
 		url += "?cursor=" + cursor
 	}
 
 	rep, err := e.doCall("GET", url, "")
-	err != nil
 
 	if err != nil {
 		return nil, err
@@ -472,17 +482,17 @@ func (e *ELSCLI) getInfringementPage(url, cursor string) (i *CustomerEULAInfring
 	}
 
 	if rep.StatusCode != 200 {
-		return res, nil
+		return nil, ErrUnexpectedResponse
 	}
 
 	data, err := ioutil.ReadAll(rep.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
 	if err := json.Unmarshal(data, &res); err != nil {
 		return nil, err
 	}
+	return &res, nil
 }
 
 // doGetCommand executes a generic GET request.
@@ -631,15 +641,14 @@ func vendorCommands(vendorC *cli.Cmd) {
 		})
 	})
 	vendorC.Command("get-eula-license-infringements", "Create a report containing details of Customer Licence EULA Infringements", func(c *cli.Cmd) {
+		now := gApp.tp.Now()
+		y := now.Year()
+		m := now.Month()
+		c.Spec = "YEAR MONTH"
+		year := c.IntArg("YEAR", y, "The Year of the report (e.g. 2018)")
+		month := c.IntArg("MONTH", int(m), "The month of the report as an integer (where January = 1)")
 
 		c.Action = func() {
-			now := gApp.tp.Now()
-			y := now.Year()
-			m := now.Month()
-			c.Spec = "YEAR MONTH"
-			year := c.IntArg("YEAR", y, "The Year of the report (e.g. 2018)")
-			month := c.IntArg("MONTH", m, "The month of the report as an integer (where January = 1)")
-
 			gApp.getEULALicenseInfringements(*vendorID, *year, *month)
 		}
 	})

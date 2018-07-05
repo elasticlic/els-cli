@@ -47,8 +47,12 @@ var _ = Describe("els_cliTest Suite", func() {
 		prof            *cli.Profile
 		vendorID            = "aVendor"
 		cloudProviderID     = "aCloudProvider"
+		eulaPeriod          = "month"
+		year                = "2018"
+		month               = "7"
 		rulesetID           = "aRuleset"
 		URL                 = "/a/path/and?querystring"
+		cursor              = "aCursor"
 		maxAPITries     int = 1
 		accessKey           = els.AccessKey{
 			ID:              ID,
@@ -380,16 +384,135 @@ var _ = Describe("els_cliTest Suite", func() {
 				})
 				Context("The Year and Month for the report is given", func() {
 					BeforeEach(func() {
-						args = append(args, "2018", "6")
+						args = append(args, year, month)
 					})
 					Context("There are multiple pages of infringements", func() {
 						BeforeEach(func() {
+							rJSON1 := `
+								{
+									"cursor": "` + cursor + `",
+									"customerInfringements": [
+										{
+											"elsCustomerId": "elsCustomerID1",
+											"vendorCustomerId": "vendorCustomerID1",
+											"infringements": [
+												{
+													"eulaPeriod": "` + eulaPeriod + `",
+													"year": ` + year + `,
+													"month": ` + month + `,
+													"vendorId": "` + vendorID + `",
+													"eulaPolicyId": "eulaPolicyID1",
+													"featureId": "featureID1",
+													"licenceSetId": "licenceSetID1",
+													"licenceIndex": 2,
+													"numUsers": 5
+												},
+												{
+													"eulaPeriod": "` + eulaPeriod + `",
+													"year": ` + year + `,
+													"month": ` + month + `,
+													"vendorId": "` + vendorID + `",
+													"eulaPolicyId": "eulaPolicyID2",
+													"featureId": "featureID2",
+													"licenceSetId": "licenceSetID2",
+													"licenceIndex": 4,
+													"numUsers": 6
+												}
+											]
+										}
+									]
+								}
+							`
+							ac.AddExpectedCall("Do", em.APICall{
+								ACRep: em.ACRep{
+									Rep: em.HTTPResponse(200, rJSON1),
+								},
+							})
+							rJSON2 := `
+								{
+									"cursor": "",
+									"customerInfringements": [
+										{
+											"elsCustomerId": "elsCustomerID2",
+											"vendorCustomerId": "vendorCustomerID2",
+											"infringements": [
+												{
+													"eulaPeriod": "` + eulaPeriod + `",
+													"year": ` + year + `,
+													"month": ` + month + `,
+													"vendorId": "` + vendorID + `",
+													"eulaPolicyId": "eulaPolicyID3",
+													"featureId": "featureID3",
+													"licenceSetId": "licenceSetID3",
+													"licenceIndex": 0,
+													"numUsers": 1
+												}
+											]
+										}
+									]
+								}
+							`
+							ac.AddExpectedCall("Do", em.APICall{
+								ACRep: em.ACRep{
+									Rep: em.HTTPResponse(200, rJSON2),
+								},
+							})
+						})
+						It("returns the expected CSV", func() {
 
+							expectedCSV :=
+								"elsCustomerID,vendorCustomerID,eulaPeriod,year,month,eulaPolicyID,featureID,licenseSetID,licenseIndex,numUsers\n" +
+									"elsCustomerID1,vendorCustomerID1,month,2018,7,eulaPolicyID1,featureID1,licenceSetID1,2,5\n" +
+									"elsCustomerID1,vendorCustomerID1,month,2018,7,eulaPolicyID2,featureID2,licenceSetID2,4,6\n" +
+									"elsCustomerID2,vendorCustomerID2,month,2018,7,eulaPolicyID3,featureID3,licenceSetID3,0,1\n"
+
+							checkOutputString(expectedCSV)
 						})
 					})
-				})
-				Context("There are no infringements", func() {
+					Context("There are no infringements", func() {
+						BeforeEach(func() {
+							rJSON1 := `
+								{
+									"cursor": "` + cursor + `",
+									"customerInfringements": []
+								}
+							`
+							ac.AddExpectedCall("Do", em.APICall{
+								ACRep: em.ACRep{
+									Rep: em.HTTPResponse(200, rJSON1),
+								},
+							})
+							rJSON2 := `
+								{
+									"cursor": "",
+									"customerInfringements": []
+								}
+							`
+							ac.AddExpectedCall("Do", em.APICall{
+								ACRep: em.ACRep{
+									Rep: em.HTTPResponse(200, rJSON2),
+								},
+							})
+						})
+						It("returns the expected CSV", func() {
 
+							expectedCSV := "elsCustomerID,vendorCustomerID,eulaPeriod,year,month,eulaPolicyID,featureID,licenseSetID,licenseIndex,numUsers\n"
+
+							checkOutputString(expectedCSV)
+						})
+					})
+					Context("An unexpected response is received", func() {
+						BeforeEach(func() {
+							ac.AddExpectedCall("Do", em.APICall{
+								ACRep: em.ACRep{
+									Rep: em.HTTPResponse(500, ""),
+								},
+							})
+						})
+						FIt("reports an unexpected error", func() {
+							Expect(fatalErr).To(Equal(cli.ErrUnexpectedResponse))
+						})
+					})
 				})
 			})
 		})
