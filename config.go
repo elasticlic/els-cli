@@ -49,7 +49,7 @@ func (p *Profile) Sign(r *http.Request, now time.Time) error {
 	return s.Sign(r, now)
 }
 
-// ApplyDefaults updates any invalid zero-values to their defaults.
+// SetDefaults updates any invalid zero-values to their defaults.
 func (p *Profile) SetDefaults() {
 	if p.MaxAPITries == 0 {
 		p.MaxAPITries = 2

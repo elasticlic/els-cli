@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,10 +36,12 @@ const (
 	APIRetryInterval = time.Millisecond * 500
 )
 
+// Errors presented to user.
 var (
-	ErrNoContent      = errors.New("No Content Provided - either provide a filename or pipe content to the command")
-	ErrInvalidOutput  = errors.New("Invalid output specified")
-	ErrApiUnreachable = errors.New("The ELS API could not be reached. Are you connected to the internet? Have you used the correct profile?")
+	ErrNoContent          = errors.New("No Content Provided - either provide a filename or pipe content to the command")
+	ErrInvalidOutput      = errors.New("Invalid output specified")
+	ErrAPIUnreachable     = errors.New("The ELS API could not be reached. Are you connected to the internet? Have you used the correct profile?")
+	ErrUnexpectedResponse = errors.New("Unexpected Response")
 )
 
 // ELSCLI represents our App.
@@ -124,7 +127,7 @@ func (e *ELSCLI) fatalError(err error) {
 func (e *ELSCLI) tryRequest(req *http.Request) (rep *http.Response, err error) {
 	if rep, err = e.apiCaller.Do(nil, req, e.profile, true); err != nil {
 		log.WithFields(log.Fields{"Time": e.tp.Now(), "method": req.Method, "url": req.URL, "err": err}).Debug("Could not access API")
-		return nil, ErrApiUnreachable
+		return nil, ErrAPIUnreachable
 	}
 
 	return rep, nil
@@ -157,26 +160,24 @@ func (e *ELSCLI) getInputData(srcFile string) (io.ReadCloser, error) {
 // get makes a GET call to the given URL, where URL is relative to the API root
 // e.g. "/vendors".
 func (e *ELSCLI) get(URL string) error {
-	return e.makeCall("GET", URL, "")
+	return e.doCallAndRep("GET", URL, "")
 }
 
 // delete makes a DELETE call with the given URL, where URL is relative to the API root
 // e.g. "/vendors".
 func (e *ELSCLI) delete(URL string) error {
-	return e.makeCall("DELETE", URL, "")
+	return e.doCallAndRep("DELETE", URL, "")
 }
 
-// makeCall executes an API call whose body will be set to the contents of the
+// doCall executes an API call whose body will be set to the contents of the
 // given file, or, if no file is given, data piped to the command. The URL is
 // relative to the API root - e.g. "/vendors".
-func (e *ELSCLI) makeCall(httpMethod string, URL string, srcFile string) (err error) {
-	var (
-		bodyRC io.ReadCloser
-		rep    *http.Response
-	)
+func (e *ELSCLI) doCall(httpMethod string, URL string, srcFile string) (rep *http.Response, err error) {
+	var bodyRC io.ReadCloser
+
 	if (httpMethod == "POST") || (httpMethod == "PUT") {
 		if bodyRC, err = e.getInputData(srcFile); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -190,10 +191,24 @@ func (e *ELSCLI) makeCall(httpMethod string, URL string, srcFile string) (err er
 	req, err := http.NewRequest(httpMethod, URL, bodyRC)
 	if err != nil {
 		log.WithFields(log.Fields{"Time": e.tp.Now(), "url": URL, "error": err}).Debug("putRequest")
-		return err
+		return nil, err
 	}
 
 	if rep, err = e.doRequest(req); err != nil {
+		return nil, err
+	}
+
+	return rep, nil
+}
+
+// doCallAndRep executes an API call whose body will be set to the contents of
+// the given file, or, if no file is given, data piped to the command. The URL
+// is relative to the API root - e.g. "/vendors". The response is written to the
+// output stream.
+func (e *ELSCLI) doCallAndRep(httpMethod string, URL string, srcFile string) (err error) {
+	rep, err := e.doCall(httpMethod, URL, srcFile)
+
+	if err != nil {
 		return err
 	}
 
@@ -235,7 +250,7 @@ func (e *ELSCLI) writeResponse(rep *http.Response) error {
 
 // putVendor updates or creates a vendor.
 func (e *ELSCLI) putVendor(vendorID string, inputFilename string) {
-	if err := e.makeCall("PUT", "/vendors/"+vendorID, inputFilename); err != nil {
+	if err := e.doCallAndRep("PUT", "/vendors/"+vendorID, inputFilename); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -249,7 +264,7 @@ func (e *ELSCLI) getVendor(vendorID string) {
 
 // putCloudProvider updates or creates a cloud provider.
 func (e *ELSCLI) putCloudProvider(cloudProviderID string, inputFilename string) {
-	if err := e.makeCall("PUT", "/partners/"+cloudProviderID, inputFilename); err != nil {
+	if err := e.doCallAndRep("PUT", "/partners/"+cloudProviderID, inputFilename); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -262,28 +277,28 @@ func (e *ELSCLI) getCloudProvider(cloudProviderID string) {
 }
 
 // putRuleset defines or updates a ruleset with the given id.
-func (e *ELSCLI) putRuleset(vendorId string, rulesetID string, inputFilename string) {
-	url := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID
+func (e *ELSCLI) putRuleset(vendorID string, rulesetID string, inputFilename string) {
+	url := "/vendors/" + vendorID + "/paygRuleSets/" + rulesetID
 
-	if err := e.makeCall("PUT", url, inputFilename); err != nil {
+	if err := e.doCallAndRep("PUT", url, inputFilename); err != nil {
 		e.fatalError(err)
 	}
 }
 
 // activateRuleset makes the given ruleset now the one which is used to generate
 // live pricing for the vendor's products (when using Fuel).
-func (e *ELSCLI) activateRuleset(vendorId string, rulesetID string) {
-	url := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID + "/activate"
+func (e *ELSCLI) activateRuleset(vendorID string, rulesetID string) {
+	url := "/vendors/" + vendorID + "/paygRuleSets/" + rulesetID + "/activate"
 
-	if err := e.makeCall("PATCH", url, ""); err != nil {
+	if err := e.doCallAndRep("PATCH", url, ""); err != nil {
 		e.fatalError(err)
 	}
 }
 
 // getRuleset gets a ruleset.
-func (e *ELSCLI) getRuleset(vendorId string, rulesetID string) {
+func (e *ELSCLI) getRuleset(vendorID string, rulesetID string) {
 
-	url := "/vendors/" + vendorId + "/paygRuleSets/" + rulesetID
+	url := "/vendors/" + vendorID + "/paygRuleSets/" + rulesetID
 
 	if err := e.get(url); err != nil {
 		e.fatalError(err)
@@ -291,8 +306,8 @@ func (e *ELSCLI) getRuleset(vendorId string, rulesetID string) {
 }
 
 // listRulesets lists all the rulesets.
-func (e *ELSCLI) listRulesets(vendorId string) {
-	url := "/vendors/" + vendorId + "/paygRuleSets"
+func (e *ELSCLI) listRulesets(vendorID string) {
+	url := "/vendors/" + vendorID + "/paygRuleSets"
 
 	if err := e.get(url); err != nil {
 		e.fatalError(err)
@@ -349,17 +364,135 @@ func (e *ELSCLI) createAccessKey(email string, expiryDays int) {
 
 // deleteAccessKey tries to delete the Access Key whose ID is kID and whose user
 // is email.
-func (e *ELSCLI) deleteAccessKey(email string, kID els.AccessKeyID) {
-	if err := e.makeCall("DELETE", "/users/"+email+"/accessKeys/"+string(kID), ""); err != nil {
+func (e *ELSCLI) deleteAccessKey(email string, id els.AccessKeyID) {
+	if err := e.doCallAndRep("DELETE", "/users/"+email+"/accessKeys/"+string(id), ""); err != nil {
 		e.fatalError(err)
 	}
 }
 
 // listAccessKeys lists the AccessKeys relating to a user
 func (e *ELSCLI) listAccessKeys(email string) {
-	if err := e.makeCall("GET", "/users/"+email+"/accessKeys", ""); err != nil {
+	if err := e.doCallAndRep("GET", "/users/"+email+"/accessKeys", ""); err != nil {
 		e.fatalError(err)
 	}
+}
+
+// CustomerEULAInfringementsResponse represents a page of results returned from
+// a request for customer infringements.
+type CustomerEULAInfringementsResponse struct {
+	Cursor                string                      `json:"cursor"`
+	CustomerInfringements []CustomerEULAInfringements `json:"customerInfringements"`
+}
+
+// EULAInfringement represents a specific EULA License infringement.
+type EULAInfringement struct {
+	EULAPeriod   string `json:"eulaPeriod"`
+	Year         int    `json:"year"`
+	Month        int    `json:"month"`
+	EULAPolicyID string `json:"eulaPolicyId"`
+	VendorID     string `json:"vendorId"`
+	FeatureID    string `json:"featureId"`
+	LicenseSetID string `json:"licenceSetId"`
+	LicenseIndex int    `json:"licenceIndex"`
+	NumUsers     int    `json:"numUsers"`
+}
+
+// CustomerEULAInfringements represents the infringements relating to a specific
+// customer in a given period.
+type CustomerEULAInfringements struct {
+	ELSCustomerID    string             `json:"elsCustomerId"`
+	VendorCustomerID string             `json:"vendorCustomerId"`
+	Infringements    []EULAInfringement `json:"infringements"`
+}
+
+func (e *ELSCLI) doGetEULALicenseInfringements(vendorID string, year, month int) error {
+
+	path := fmt.Sprintf("/vendors/%s/customerLicenceEulaInfringements/month/%d/%d", vendorID, year, month)
+
+	csvWriter := csv.NewWriter(e.outputStream)
+	records := [][]string{
+		[]string{
+			"elsCustomerID",
+			"vendorCustomerID",
+			"eulaPeriod",
+			"year",
+			"month",
+			"eulaPolicyID",
+			"featureID",
+			"licenseSetID",
+			"licenseIndex",
+			"numUsers",
+		}}
+
+	cursor := ""
+
+	for {
+		cir, err := e.getInfringementPage(path, cursor)
+
+		if err != nil {
+			return err
+		}
+
+		cursor = cir.Cursor
+
+		for _, ci := range cir.CustomerInfringements {
+			for _, i := range ci.Infringements {
+
+				records = append(records, []string{
+					ci.ELSCustomerID,
+					ci.VendorCustomerID,
+					i.EULAPeriod,
+					strconv.Itoa(i.Year),
+					strconv.Itoa(i.Month),
+					i.EULAPolicyID,
+					i.FeatureID,
+					i.LicenseSetID,
+					strconv.Itoa(i.LicenseIndex),
+					strconv.Itoa(i.NumUsers),
+				})
+			}
+		}
+
+		if cursor == "" {
+			break
+		}
+	}
+
+	csvWriter.WriteAll(records)
+	return nil
+}
+
+// getInfringementPage gets a single page of CustomerEULAInfringements results,
+// beginning either at the specified cursor or the start of the result set if
+// the cursor is zero-valued. path defines the rou
+func (e *ELSCLI) getInfringementPage(url, cursor string) (i *CustomerEULAInfringementsResponse, err error) {
+	res := CustomerEULAInfringementsResponse{}
+	if cursor != "" {
+		url += "?cursor=" + cursor
+	}
+
+	rep, err := e.doCall("GET", url, "")
+
+	if err != nil {
+		return nil, err
+	}
+
+	if rep.Body != nil {
+		defer rep.Body.Close()
+	}
+
+	if rep.StatusCode != 200 {
+		return nil, ErrUnexpectedResponse
+	}
+
+	data, err := ioutil.ReadAll(rep.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
 }
 
 // doGetCommand executes a generic GET request.
@@ -378,7 +511,15 @@ func (e *ELSCLI) doDeleteCommand(URL string) {
 
 // doCommand executes a generic POST, PUT or PATCH request.
 func (e *ELSCLI) doCommand(method string, URL string, inputFilename string) {
-	if err := e.makeCall(method, "/"+URL, inputFilename); err != nil {
+	if err := e.doCallAndRep(method, "/"+URL, inputFilename); err != nil {
+		e.fatalError(err)
+	}
+}
+
+// getEULALicenseInfringements outputs a CSV file listing Customers and their
+// EULA License infringements in the given month for the given Vendor's apps.
+func (e *ELSCLI) getEULALicenseInfringements(vendorID string, year, month int) {
+	if err := e.doGetEULALicenseInfringements(vendorID, year, month); err != nil {
 		e.fatalError(err)
 	}
 }
@@ -499,6 +640,18 @@ func vendorCommands(vendorC *cli.Cmd) {
 			}
 		})
 	})
+	vendorC.Command("get-eula-license-infringements", "Create a report containing details of Customer Licence EULA Infringements", func(c *cli.Cmd) {
+		now := gApp.tp.Now()
+		y := now.Year()
+		m := now.Month()
+		c.Spec = "YEAR MONTH"
+		year := c.IntArg("YEAR", y, "The Year of the report (e.g. 2018)")
+		month := c.IntArg("MONTH", int(m), "The month of the report as an integer (where January = 1)")
+
+		c.Action = func() {
+			gApp.getEULALicenseInfringements(*vendorID, *year, *month)
+		}
+	})
 }
 
 // userCommands defines the commands relating to the User API.
@@ -514,9 +667,9 @@ func userCommands(userC *cli.Cmd) {
 			}
 		})
 		accessKeysC.Command("delete", "Delete an API Access Key", func(c *cli.Cmd) {
-			keyId := c.StringArg("ACCESSKEYID", "", "The ID of the Access Key to be deleted")
+			id := c.StringArg("ACCESSKEYID", "", "The ID of the Access Key to be deleted")
 			c.Action = func() {
-				gApp.deleteAccessKey(*email, els.AccessKeyID(*keyId))
+				gApp.deleteAccessKey(*email, els.AccessKeyID(*id))
 			}
 		})
 		accessKeysC.Command("list", "List API Access Keys", func(c *cli.Cmd) {
